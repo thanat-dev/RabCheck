@@ -1,0 +1,9 @@
+{
+  "appId": "com.rabcheck.app",
+  "appName": "RabCheck",
+  "webDir": "www",
+  "server": {
+    "url": "http://192.168.1.105:5000",
+    "cleartext": true
+  }
+}

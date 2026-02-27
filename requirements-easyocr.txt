@@ -1,0 +1,7 @@
+# Optional: EasyOCR สำหรับความแม่นยำสูงขึ้น (ภาษาไทย)
+# ติดตั้ง: pip install -r requirements-easyocr.txt
+# ตั้งค่า: set OCR_ENGINE=easyocr ก่อนรัน run.bat
+
+torch
+torchvision
+easyocr

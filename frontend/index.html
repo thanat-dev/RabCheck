@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#1a73e8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>ระบบบันทึกเช็คและรายการใบเสร็จ</title>
+  <link rel="stylesheet" href="styles.css?v=5">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>ระบบบันทึกเช็คและรายการใบเสร็จ</h1>
+      <nav>
+        <button type="button" class="nav-btn active" data-page="upload">อัพโหลดรูป</button>
+        <button type="button" class="nav-btn" data-page="list">รายการใบเสร็จ</button>
+        <button type="button" class="nav-btn" data-page="collect">รวบรวมข้อมูล</button>
+        <button type="button" class="nav-btn" data-page="report">สรุปยอด</button>
+        <button type="button" id="btnOpenListSettings" class="nav-btn nav-btn-ghost" title="ตั้งค่า เพิ่มสถานที่ / เลขบัญชี">ตั้งค่า เพิ่มสถานที่ / เลขบัญชี</button>
+      </nav>
+    </header>
+
+    <main>
+      <!-- หน้า อัพโหลด -->
+      <section id="page-upload" class="page active page-upload">
+        <div class="upload-page-inner">
+          <header class="upload-page-header">
+            <h2 class="upload-page-title">อัพโหลดรูปใบเสร็จ / เช็ค</h2>
+            <p class="upload-page-desc">อัพโหลดรูปภาพเพื่อดึงข้อมูลอัตโนมัติ หรือไปกรอกที่รายการใบเสร็จ</p>
+          </header>
+          <div class="upload-zone" id="uploadZone">
+            <input type="file" id="fileInput" accept="image/*" hidden>
+            <span class="upload-zone-icon" aria-hidden="true">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </span>
+            <p class="upload-zone-title">ลากรูปมาวาง หรือคลิกเพื่อเลือกรูป</p>
+            <p class="upload-zone-hint">จากมือถือหรือคอมพิวเตอร์</p>
+            <div class="upload-types">
+              <span class="upload-type-tag">หน้าเช็ค</span>
+              <span class="upload-type-tag">ใบโอนเงิน E-WHT</span>
+              <span class="upload-type-tag">ใบสรุปรายการ</span>
+            </div>
+          </div>
+          <div id="uploadResult" class="upload-result hidden"></div>
+          <section class="upload-account-ref" id="uploadAccountRef">
+            <div class="upload-account-ref-header">
+              <h3 class="upload-account-ref-title">บัญชีที่ใช้รับเช็ค (เตือนความจำ)</h3>
+              <label class="upload-account-ref-toggle">
+                <input type="checkbox" id="accountRefOnlyUsed" checked>
+                <span>แสดงเฉพาะเลขที่บัญชีที่เคยนำฝาก</span>
+              </label>
+            </div>
+            <div class="upload-account-ref-scroll" role="region" aria-label="ตารางบัญชีที่ใช้รับเช็ค">
+              <table class="upload-account-ref-table">
+                <thead>
+                  <tr>
+                    <th>เลขที่บัญชี</th>
+                    <th>ประเภท</th>
+                    <th>ชื่อบัญชี</th>
+                    <th>ธนาคาร</th>
+                    <th>สาขา</th>
+                  </tr>
+                </thead>
+                <tbody id="uploadAccountRefBody"></tbody>
+              </table>
+            </div>
+          </section>
+          <section class="upload-summary-places" id="uploadSummaryPlaces">
+            <h3 class="upload-summary-places-title">สรุปสถานที่ที่เคยไปเก็บเช็ค</h3>
+            <div id="uploadSummaryPlacesList" class="upload-summary-places-list">
+              <p class="upload-summary-places-loading">กำลังโหลด...</p>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- หน้ารายการใบเสร็จ (ตารางซ้าย + ฟอร์มขวา) -->
+      <section id="page-list" class="page page-receipts">
+        <div class="receipt-page-header">
+          <p class="breadcrumb">อัปโหลดเช็ค &gt; รายการใบเสร็จ</p>
+          <h2 class="page-title">รายการใบเสร็จ</h2>
+        </div>
+        <div class="list-controls">
+          <div class="list-filters">
+            <div class="date-input-wrap list-date-wrap">
+              <label for="listDateFilter">กรองวันที่:</label>
+              <input type="text" id="listDateFilter" class="date-input-calendar list-date-input" placeholder="คลิกเลือกวันที่ (ว่าง = ทั้งหมด)" readonly>
+            </div>
+            <button type="button" id="btnListClearDate" class="btn-secondary">ล้าง (แสดงทั้งหมด)</button>
+            <button type="button" id="btnListDateSort" class="btn-secondary" title="สลับเรียงตามวันที่">เรียง: เก่า → ใหม่</button>
+          </div>
+          <div class="list-actions">
+            <button type="button" id="btnShowAll" class="btn-secondary" style="display:none;">แสดงทั้งหมด</button>
+            <button type="button" id="btnCancelUploadToolbar" class="btn-secondary" style="display:none;">ยกเลิกอัพโหลด</button>
+            <button type="button" id="btnBackToCollect" class="btn-secondary" style="display:none;">กลับไปหน้ารวบรวมข้อมูล</button>
+          </div>
+        </div>
+        <div class="list-content-full">
+          <div class="table-panel">
+            <div id="tablePanelActions" class="table-panel-actions hidden">
+              <button type="button" id="btnAddNewAboveTable" class="btn-primary">+ เพิ่มรายการใบเสร็จ</button>
+            </div>
+            <div id="receiptTableWrap" class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th class="col-actions">จัดการ</th>
+                    <th>วัน/เดือน/ปี</th>
+                    <th>เวลานำฝาก</th>
+                    <th>เล่มที่/เลขที่</th>
+                    <th>เลขที่ IV</th>
+                    <th>เช็คเลขที่</th>
+                    <th>เข้าบัญชี</th>
+                    <th>จำนวนเงิน</th>
+                    <th>รวมจำนวนเงิน</th>
+                    <th>ชื่อผู้ซื้อ/สถานที่</th>
+                    <th>ที่มาเช็ค</th>
+                    <th>สถานะ</th>
+                  </tr>
+                </thead>
+                <tbody id="entriesTableBody"></tbody>
+              </table>
+            </div>
+            <div id="receiptEmptyState" class="empty-state hidden">
+              <p class="empty-state-text">ยังไม่มีรายการใบเสร็จ</p>
+              <button type="button" id="btnAddNewEmpty" class="btn-primary">+ เพิ่มรายการใบเสร็จ</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- หน้ารวบรวมข้อมูล -->
+      <section id="page-collect" class="page">
+        <div class="collect-header">
+          <div class="date-input-wrap">
+            <label>วันที่:</label>
+            <input type="text" id="collectDate" class="date-input-calendar" placeholder="คลิกเลือกวันที่ (เว้นว่าง = ทั้งหมด)" readonly>
+          </div>
+          <button type="button" id="btnCollectRefresh">แสดงผล</button>
+          <button type="button" id="btnCollectClear">ล้าง (แสดงทั้งหมด)</button>
+          <button type="button" id="btnCollectDateSort" class="btn-secondary" title="สลับเรียงตามวันที่">เรียง: เก่า → ใหม่</button>
+          <button type="button" id="btnExportCsv">ส่งออก CSV</button>
+          <button type="button" id="btnSendToSheet">ส่งไป Google Sheet</button>
+            <button type="button" id="btnSheetConfig" class="btn-secondary">ตั้งค่า URL</button>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="col-actions">จัดการ</th>
+                <th>วัน/เดือน/ปี</th>
+                <th>เวลานำฝาก</th>
+                <th>เล่มที่/เลขที่</th>
+                <th>เลขที่ IV</th>
+                <th>เช็คเลขที่</th>
+                <th>เข้าบัญชี</th>
+                <th>จำนวนเงิน</th>
+                <th>รวมจำนวนเงิน</th>
+                <th>ชื่อผู้ซื้อ/สถานที่</th>
+                <th>ที่มาเช็ค</th>
+                <th>สถานะ</th>
+              </tr>
+            </thead>
+            <tbody id="collectTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Modal ตั้งค่าเพิ่มเติม: รายการชื่อผู้ซื้อ/สถานที่ และเข้าบัญชี -->
+      <div id="listSettingsModal" class="modal hidden">
+        <div class="modal-content modal-content-wide">
+          <div class="modal-header">
+            <h2>ตั้งค่าเพิ่มเติม — รายการที่เพิ่มเอง</h2>
+            <button type="button" class="close-btn" id="listSettingsClose">&times;</button>
+          </div>
+          <div class="modal-body">
+            <section class="settings-section">
+              <h3 class="settings-section-title">ชื่อผู้ซื้อ/สถานที่ (ที่เพิ่มเอง)</h3>
+              <p class="settings-hint">รายการที่พิมพ์เพิ่มตอนบันทึกจะแสดงที่นี่ และใน dropdown ชื่อผู้ซื้อ/สถานที่</p>
+              <div class="settings-dropdown-wrap">
+                <span class="settings-dropdown-label">รายการทั้งหมดใน dropdown ชื่อผู้ซื้อ/สถานที่ (แก้ไข/ลบรายการที่เพิ่มเองได้):</span>
+                <ul id="settingsDropdownBuyerPlaceList" class="settings-list settings-dropdown-list"></ul>
+              </div>
+              <div class="settings-add-row">
+                <input type="text" id="settingsNewBuyerPlace" placeholder="พิมพ์ชื่อสถานที่/ผู้ซื้อ แล้วกด เพิ่ม">
+                <button type="button" id="btnAddBuyerPlace" class="btn-primary">เพิ่ม</button>
+              </div>
+              <p class="settings-hint" style="margin-top:8px;">ทุกรายการมีปุ่ม แก้ไข / × — กด แก้ไข เพื่อเปลี่ยนชื่อ หรือ กด × เพื่อลบออกจาก dropdown</p>
+            </section>
+            <section class="settings-section">
+              <h3 class="settings-section-title">เข้าบัญชี (ที่เพิ่มเอง)</h3>
+              <p class="settings-hint">รายการที่เลือก &quot;อื่นๆ (กรอกเอง)&quot; แล้วกรอกจะถูกจำ และแสดงใน dropdown</p>
+              <div class="settings-dropdown-wrap">
+                <span class="settings-dropdown-label">รายการทั้งหมดใน dropdown เข้าบัญชี (แก้ไข/ลบรายการที่เพิ่มเองได้):</span>
+                <ul id="settingsDropdownAccountList" class="settings-list settings-dropdown-list"></ul>
+              </div>
+              <div class="settings-add-row">
+                <input type="text" id="settingsNewAccount" placeholder="พิมพ์เลขบัญชีหรือชื่อ แล้วกด เพิ่ม">
+                <button type="button" id="btnAddAccount" class="btn-primary">เพิ่ม</button>
+              </div>
+              <p class="settings-hint" style="margin-top:8px;">ทุกรายการมีปุ่ม แก้ไข / × — กด × เพื่อลบออกจาก dropdown</p>
+              <p id="settingsAccountRestoreOther" class="settings-restore-other hidden" style="margin-top:8px;">
+                ตัวเลือก &quot;อื่นๆ (กรอกเอง)&quot; ถูกซ่อนแล้ว <button type="button" id="btnRestoreAccountOther" class="btn-secondary" style="margin-left:8px;">แสดงอีกครั้ง</button>
+              </p>
+            </section>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal ตั้งค่า Google Sheet -->
+      <div id="sheetConfigModal" class="modal hidden">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2>ตั้งค่า Google Sheet</h2>
+            <button type="button" class="close-btn" id="sheetConfigClose">&times;</button>
+          </div>
+          <div class="modal-body">
+            <p>ใส่ URL ของ Google Apps Script Web App (ดูคู่มือ "คู่มือส่งข้อมูลไป Google Sheet.md")</p>
+            <input type="text" id="sheetWebAppUrl" placeholder="https://script.google.com/macros/s/xxxxx/exec" style="width:100%;padding:8px;margin:8px 0;">
+            <div class="form-actions">
+              <button type="button" id="btnSaveSheetUrl" class="btn-primary">บันทึก</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- หน้าสรุปรายงาน (เฉพาะหน้าที่จะพิมพ์) -->
+      <section id="page-report" class="page">
+        <div class="report-actions">
+          <div class="date-input-wrap">
+            <label>วันที่:</label>
+            <input type="text" id="reportDate" class="date-input-calendar" placeholder="คลิกเลือกวันที่ แล้วกด แสดงผล" readonly>
+          </div>
+          <button type="button" id="btnReportLatest">แสดงหน้าล่าสุด</button>
+          <button type="button" id="btnReportRefresh">แสดงผล</button>
+          <button type="button" id="btnReportClear">ล้าง (แสดงทั้งหมด)</button>
+          <button type="button" id="btnPrintReport">พิมพ์สรุปรายงาน</button>
+        </div>
+        <div id="reportContent" class="report-content"></div>
+      </section>
+    </main>
+
+    <!-- Modal แก้ไขรายการ -->
+    <div id="entryModal" class="modal hidden">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="modalTitle">แก้ไขรายการ</h2>
+          <button type="button" class="close-btn" id="modalClose">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div id="modalImage" class="modal-image"></div>
+          <p class="form-hint">แต่ละรายการ = ใบเสร็จรับเงิน 1 ใบ ที่ออกจากเช็ค — ถ้าเช็คใบเดียวกันออกหลายใบเสร็จ ให้กรอก <strong>เช็คเลขที่</strong> ให้ตรงกันทุกรายการ</p>
+          <form id="entryForm">
+            <input type="hidden" id="entryId">
+            <div class="form-grid">
+              <label>เช็คเลขที่ <span id="chequeNoSourceHint" class="form-field-hint" aria-hidden="true"></span></label>
+              <input type="text" id="fChequeNo" placeholder="เลขเช็คที่ออกใบเสร็จนี้ (เช็คเดียวกันกรอกเลขเดียวกัน)">
+              <label>เล่มที่/เลขที่ (ใบเสร็จ)</label>
+              <input type="text" id="fBookNo" placeholder="เช่น 10/69 เลขที่ 50056">
+              <label>เลขที่ IV (ใบแจ้งหนี้/ใบส่งของ)</label>
+              <input type="text" id="fIvNo" placeholder="เช่น IV69/00541">
+              <label>จำนวนเงิน (ยอดในใบเสร็จ)</label>
+              <input type="text" id="fAmount" inputmode="decimal" placeholder="0.00">
+              <label>รวมจำนวนเงิน</label>
+              <input type="text" id="fTotalAmount" inputmode="decimal" placeholder="0.00" readonly title="ขึ้นอัตโนมัติตามจำนวนเงิน">
+              <label>วัน/เดือน/ปี</label>
+              <input type="text" id="fDate" placeholder="คลิกเลือกวันที่" readonly>
+              <label>เวลานำฝาก</label>
+              <input type="text" id="fDepositTime" placeholder="เวลานำฝาก">
+              <label>เข้าบัญชี</label>
+              <div class="account-field">
+                <select id="fAccount"><option value="">-- เลือก --</option></select>
+                <input type="text" id="fAccountOther" placeholder="กรอกเลขบัญชี" class="account-other hidden">
+              </div>
+              <label>ชื่อผู้ซื้อ/สถานที่</label>
+              <input type="text" id="fBuyerPlace" list="buyerPlaceList" placeholder="เลือกรายการหรือพิมพ์เพิ่มใหม่">
+              <datalist id="buyerPlaceList"></datalist>
+              <label>ที่มาเช็ค</label>
+              <input type="text" id="fChequeSource">
+              <label>สถานะ</label>
+              <input type="text" id="fStatus">
+              <label>จำนวนเงิน (ตัวอักษร)</label>
+              <input type="text" id="fAmountWords" title="ขึ้นอัตโนมัติตามจำนวนเงิน (แก้ไขได้)">
+              <label>หมายเหตุ / Memo</label>
+              <input type="text" id="fMemo">
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn-primary">บันทึก</button>
+              <button type="button" id="btnDeleteEntry" class="btn-danger">ลบรายการ</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/th.js"></script>
+  <script src="app.js?v=5"></script>
+</body>
+</html>
