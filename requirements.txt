@@ -12,3 +12,5 @@ google-generativeai>=0.8.0
 openpyxl>=3.1.0
 # ส่งข้อมูลไป Google Apps Script (รองรับ redirect ของ Google)
 requests>=2.31.0
+# PostgreSQL สำหรับ deploy บน Cloud (Render)
+psycopg2-binary>=2.9.9

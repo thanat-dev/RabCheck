@@ -34,7 +34,7 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
 from config import UPLOAD_FOLDER, ALLOWED_EXTENSIONS, BASE_DIR
-from database import get_db, init_db
+from database import get_db, init_db, execute, execute_returning_id, fetchone, fetchall
 from ocr_helper import run_ocr
 
 app = Flask(__name__, static_folder='../frontend', static_url_path='')
@@ -72,11 +72,11 @@ def upload():
     fields = ocr_result.get("fields", {})
 
     with get_db() as conn:
-        cur = conn.execute(
+        upload_id = execute_returning_id(
+            conn,
             "INSERT INTO uploads (image_path) VALUES (?)",
             (filename,)
         )
-        upload_id = cur.lastrowid
 
     return jsonify({
         "upload_id": upload_id,
@@ -90,7 +90,7 @@ def upload():
 def get_upload_ocr(upload_id):
     """ดึงผล OCR จากรูปของชุดอัพโหลดนี้ (ใช้เติมฟอร์มเพิ่มรายการ เช่น เลขเช็ค)"""
     with get_db() as conn:
-        row = conn.execute("SELECT image_path FROM uploads WHERE id = ?", (upload_id,)).fetchone()
+        row = fetchone(conn, "SELECT image_path FROM uploads WHERE id = ?", (upload_id,))
         if not row:
             return jsonify({"error": "ไม่พบรายการอัพโหลด"}), 404
         filename = row['image_path']
@@ -108,12 +108,12 @@ def serve_upload(filename):
 def delete_upload(upload_id):
     """ยกเลิกอัพโหลด — ลบรูปและรายการที่ผูกกับชุดนี้"""
     with get_db() as conn:
-        row = conn.execute("SELECT image_path FROM uploads WHERE id = ?", (upload_id,)).fetchone()
+        row = fetchone(conn, "SELECT image_path FROM uploads WHERE id = ?", (upload_id,))
         if not row:
             return jsonify({"error": "ไม่พบรายการอัพโหลด"}), 404
         filename = row['image_path']
-        conn.execute("DELETE FROM entries WHERE upload_id = ?", (upload_id,))
-        conn.execute("DELETE FROM uploads WHERE id = ?", (upload_id,))
+        execute(conn, "DELETE FROM entries WHERE upload_id = ?", (upload_id,))
+        execute(conn, "DELETE FROM uploads WHERE id = ?", (upload_id,))
     path = os.path.join(UPLOAD_FOLDER, filename)
     if os.path.isfile(path):
         try:
@@ -236,23 +236,23 @@ def list_entries():
                 for d in date_values:
                     conditions.append("(trim(coalesce(e.date,'')) = ? OR trim(coalesce(e.date,'')) LIKE ?)")
                 params = (upload_id,) + tuple(p for d in date_values for p in [d, d + '%'])
-                rows = conn.execute(
+                rows = fetchall(conn,
                     """SELECT e.*, u.image_path
                        FROM entries e
                        LEFT JOIN uploads u ON e.upload_id = u.id
                        WHERE e.upload_id = ? AND (""" + ' OR '.join(conditions) + """)
                        ORDER BY e.created_at DESC""",
                     params
-                ).fetchall()
+                )
             else:
-                rows = conn.execute(
+                rows = fetchall(conn,
                     """SELECT e.*, u.image_path
                        FROM entries e
                        LEFT JOIN uploads u ON e.upload_id = u.id
                        WHERE e.upload_id = ?
                        ORDER BY e.created_at DESC""",
                     (upload_id,)
-                ).fetchall()
+                )
         else:
             if date_values:
                 # รองรับทั้ง date เท่ากับค่าที่ส่งมา และ date ขึ้นต้นด้วยค่าที่ส่งมา (เช่น มีเวลาต่อท้าย)
@@ -262,42 +262,42 @@ def list_entries():
                     conditions.append("(trim(coalesce(e.date,'')) = ? OR trim(coalesce(e.date,'')) LIKE ?)")
                     params.extend([d, d + '%'])
                 where_sql = ' OR '.join(conditions)
-                rows = conn.execute(
+                rows = fetchall(conn,
                     """SELECT e.*, u.image_path
                        FROM entries e
                        LEFT JOIN uploads u ON e.upload_id = u.id
                        WHERE (""" + where_sql + """)
                        ORDER BY e.created_at DESC""",
                     tuple(params)
-                ).fetchall()
+                )
                 # ถ้าไม่เจอจาก SQL ลองดึงทั้งหมดแล้วกรองใน Python (รองรับรูปแบบวันที่ใน DB ที่หลากหลาย)
                 if not rows:
-                    all_rows = conn.execute(
+                    all_rows = fetchall(conn,
                         """SELECT e.*, u.image_path
                            FROM entries e
                            LEFT JOIN uploads u ON e.upload_id = u.id
                            ORDER BY e.created_at DESC"""
-                    ).fetchall()
+                    )
                     rows = [r for r in all_rows if _row_date_matches(r['date'], date_values)]
             else:
-                rows = conn.execute(
+                rows = fetchall(conn,
                     """SELECT e.*, u.image_path
                        FROM entries e
                        LEFT JOIN uploads u ON e.upload_id = u.id
                        ORDER BY e.created_at DESC"""
-                ).fetchall()
+                )
     return jsonify([row_to_dict(r) for r in rows])
 
 @app.route('/api/entries/<int:eid>', methods=['GET'])
 def get_entry(eid):
     with get_db() as conn:
-        row = conn.execute(
+        row = fetchone(conn,
             """SELECT e.*, u.image_path
                FROM entries e
                LEFT JOIN uploads u ON e.upload_id = u.id
                WHERE e.id = ?""",
             (eid,)
-        ).fetchone()
+        )
     if not row:
         return jsonify({"error": "ไม่พบรายการ"}), 404
     return jsonify(row_to_dict(row))
@@ -327,13 +327,13 @@ def update_entry(eid):
     values.append(eid)
     sql = "UPDATE entries SET " + ", ".join(updates) + " WHERE id = ?"
     with get_db() as conn:
-        conn.execute(sql, values)
+        execute(conn, sql, values)
     return jsonify({"ok": True})
 
 @app.route('/api/entries/<int:eid>', methods=['DELETE'])
 def delete_entry(eid):
     with get_db() as conn:
-        conn.execute("DELETE FROM entries WHERE id = ?", (eid,))
+        execute(conn, "DELETE FROM entries WHERE id = ?", (eid,))
     return jsonify({"ok": True})
 
 @app.route('/api/entries', methods=['POST'])
@@ -342,7 +342,7 @@ def create_entry():
     data = request.get_json() or {}
     upload_id = data.get('upload_id')
     with get_db() as conn:
-        cur = conn.execute(
+        eid = execute_returning_id(conn,
             """INSERT INTO entries (
                 upload_id, date, deposit_time, book_no, iv_no, cheque_no, account,
                 amount, total_amount, buyer_place, cheque_source, status,
@@ -367,7 +367,6 @@ def create_entry():
                 data.get('branch_name'),
             )
         )
-        eid = cur.lastrowid
     return jsonify({"id": eid, "ok": True})
 
 def _float(v):

@@ -6,6 +6,9 @@ UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 DATABASE_PATH = os.path.join(BASE_DIR, 'rabcheck.db')
 
+# PostgreSQL URL สำหรับ Cloud deploy (Render) — ถ้าไม่ตั้งจะใช้ SQLite
+DATABASE_URL = os.environ.get('DATABASE_URL', '').strip() or None
+
 # Path ของ Tesseract (ถ้าว่าง ระบบจะลองหาเองที่ path มาตรฐานของ Windows)
 # ตั้งค่าได้ผ่านตัวแปรสภาพ TESSERACT_CMD เช่น C:\Program Files\Tesseract-OCR\tesseract.exe
 TESSERACT_CMD = os.environ.get('TESSERACT_CMD', '').strip() or None
