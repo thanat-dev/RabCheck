@@ -280,7 +280,7 @@
     fd.append('file', file);
     uploadResult.classList.remove('hidden');
     uploadResult.classList.remove('error');
-    uploadResult.innerHTML = 'กำลังอัพโหลดและดึงข้อมูล...';
+    uploadResult.innerHTML = 'กำลังอัพโหลด...';
     fetch(API + '/api/upload', { method: 'POST', body: fd })
       .then(function (r) { return r.json(); })
       .then(function (data) {
@@ -290,14 +290,7 @@
         }
         let html = '<p><strong>อัพโหลดสำเร็จ</strong></p>';
         if (data.image_url) html += '<p><a href="' + API + data.image_url + '" target="_blank">ดูรูป</a></p>';
-        if (data.ocr && data.ocr.ocr_error) {
-          html += '<p class="upload-ocr-error"><strong>OCR ไม่ทำงาน:</strong> ' + escapeHtml(data.ocr.ocr_error) + '</p>';
-          html += '<p>ให้เปิด Command Prompt ที่โฟลเดอร์ RabCheck แล้วรัน: <code>python backend\\check_ocr.py</code> เพื่อดูสาเหตุและวิธีแก้</p>';
-        } else if (data.ocr && data.ocr.fields && Object.keys(data.ocr.fields).length) {
-          html += '<p>ระบบดึงข้อมูลได้บางส่วน กรุณาไปที่ <strong>รายการใบเสร็จ</strong> แล้วคลิกแก้ไขเพื่อตรวจ/แก้ไข</p>';
-        } else {
-          html += '<p>ไปที่ <strong>รายการใบเสร็จ</strong> เพื่อกรอกหรือแก้ไขข้อมูลด้วยตนเอง</p>';
-        }
+        html += '<p>ไปที่ <strong>รายการใบเสร็จ</strong> เพื่อกรอกข้อมูล</p>';
         html += '<p class="upload-actions">';
         html += '<button type="button" class="btn-primary" id="btnGoToList">ไปรายการใบเสร็จ</button> ';
         html += '<button type="button" class="btn-secondary" id="btnCancelUpload" data-upload-id="' + (data.upload_id || '') + '">ยกเลิกอัพโหลด</button>';
@@ -306,11 +299,9 @@
         fileInput.value = '';
         loadUploadSummaryPlaces();
         loadUploadAccountReference();
-        // เก็บ upload_id รูป และผล OCR — ใช้เติมฟอร์มเพิ่มรายการ (เช่น เลขเช็ค)
         if (data.current_upload_id) {
           sessionStorage.setItem('rabcheck_current_upload', String(data.current_upload_id));
           sessionStorage.setItem('rabcheck_current_upload_image', data.image_url || '');
-          sessionStorage.setItem('rabcheck_ocr_fields', JSON.stringify((data.ocr && data.ocr.fields) ? data.ocr.fields : {}));
         }
         // ปุ่มไปรายการใบเสร็จ
         document.getElementById('btnGoToList').addEventListener('click', function () {

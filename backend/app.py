@@ -1,28 +1,5 @@
 # -*- coding: utf-8 -*-
 import os
-
-# โหลดตัวแปรจากไฟล์ .env ในโฟลเดอร์โปรเจกต์ (RabCheck)
-_base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_env_path = os.path.normpath(os.path.join(_base, '.env'))
-try:
-    from dotenv import load_dotenv
-    load_dotenv(_env_path)
-except ImportError:
-    pass
-if not os.environ.get('GEMINI_API_KEY') and os.path.isfile(_env_path):
-    try:
-        with open(_env_path, 'r', encoding='utf-8-sig') as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#') and '=' in line:
-                    k, _, v = line.partition('=')
-                    k, v = k.strip(), v.strip().strip('"\'')
-                    if k == 'GEMINI_API_KEY' and v:
-                        os.environ[k] = v
-                        break
-    except Exception:
-        pass
-
 import re
 import uuid
 import json
@@ -35,7 +12,6 @@ from werkzeug.utils import secure_filename
 
 from config import UPLOAD_FOLDER, ALLOWED_EXTENSIONS, BASE_DIR
 from database import get_db, init_db, execute, execute_returning_id, fetchone, fetchall
-from ocr_helper import run_ocr
 
 app = Flask(__name__, static_folder='../frontend', static_url_path='')
 CORS(app)
@@ -68,9 +44,6 @@ def upload():
     path = os.path.join(UPLOAD_FOLDER, filename)
     f.save(path)
 
-    ocr_result = run_ocr(path)
-    fields = ocr_result.get("fields", {})
-
     with get_db() as conn:
         upload_id = execute_returning_id(
             conn,
@@ -82,23 +55,13 @@ def upload():
         "upload_id": upload_id,
         "current_upload_id": upload_id,
         "image_url": f"/api/uploads/{filename}",
-        "ocr": ocr_result,
-        "message": "อัพโหลดสำเร็จ หน้ารายการทั้งหมดจะแสดงว่างเปล่ารอข้อมูลใหม่ — ไปที่รายการทั้งหมดเพื่อเพิ่มรายการ (ข้อมูลเดิมยังเก็บไว้)"
+        "message": "อัพโหลดสำเร็จ ไปที่รายการใบเสร็จเพื่อเพิ่มรายการ"
     })
 
 @app.route('/api/upload/<int:upload_id>/ocr', methods=['GET'])
 def get_upload_ocr(upload_id):
-    """ดึงผล OCR จากรูปของชุดอัพโหลดนี้ (ใช้เติมฟอร์มเพิ่มรายการ เช่น เลขเช็ค)"""
-    with get_db() as conn:
-        row = fetchone(conn, "SELECT image_path FROM uploads WHERE id = ?", (upload_id,))
-        if not row:
-            return jsonify({"error": "ไม่พบรายการอัพโหลด"}), 404
-        filename = row['image_path']
-    path = os.path.join(UPLOAD_FOLDER, filename)
-    if not os.path.isfile(path):
-        return jsonify({"error": "ไม่พบไฟล์รูป"}), 404
-    ocr_result = run_ocr(path)
-    return jsonify(ocr_result)
+    """Return empty fields (OCR removed)"""
+    return jsonify({"fields": {}})
 
 @app.route('/api/uploads/<filename>')
 def serve_upload(filename):

@@ -5,9 +5,6 @@
 rabcheck.db
 uploads/
 
-# ไฟล์ exe / binary ขนาดใหญ่
-*.exe
-
 # Python
 __pycache__/
 *.pyc
@@ -18,14 +15,8 @@ build/
 venv/
 .venv/
 
-# Node / mobile-app
-mobile-app/node_modules/
-mobile-app/android/.gradle/
-mobile-app/android/app/build/
-mobile-app/android/build/
-mobile-app/android/local.properties
+# Node
 node_modules/
-package-lock.json
 
 # IDE
 .vscode/
