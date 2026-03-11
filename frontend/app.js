@@ -45,7 +45,7 @@
     var extra = [];
     try {
       extra = JSON.parse(localStorage.getItem('rabcheck_buyer_place') || '[]');
-    } catch (e) {}
+    } catch (e) { }
     var removed = getBuyerPlaceRemovedList();
     var list = BUYER_PLACE_LIST.filter(function (v) { return removed.indexOf(v) === -1; }).concat(extra);
     var datalist = document.getElementById('buyerPlaceList');
@@ -97,12 +97,12 @@
       if (y >= 2500) y -= 543;
       return y + '-' + m[2] + '-' + m[3];
     }
-    var thaiMonths = { 'ม.ค.':1,'ก.พ.':2,'มี.ค.':3,'เม.ย.':4,'พ.ค.':5,'มิ.ย.':6,'ก.ค.':7,'ส.ค.':8,'ก.ย.':9,'ต.ค.':10,'พ.ย.':11,'ธ.ค.':12 };
+    var thaiMonths = { 'ม.ค.': 1, 'ก.พ.': 2, 'มี.ค.': 3, 'เม.ย.': 4, 'พ.ค.': 5, 'มิ.ย.': 6, 'ก.ค.': 7, 'ส.ค.': 8, 'ก.ย.': 9, 'ต.ค.': 10, 'พ.ย.': 11, 'ธ.ค.': 12 };
     m = s.match(/(\d{1,2})\s+([ก-ฮ.]+)\s+(\d{4})/);
     if (m) {
-      var d = parseInt(m[1],10), mon = thaiMonths[m[2].trim()], y = parseInt(m[3],10) - 543;
+      var d = parseInt(m[1], 10), mon = thaiMonths[m[2].trim()], y = parseInt(m[3], 10) - 543;
       if (mon && d >= 1 && d <= 31 && y > 1900 && y < 2100) {
-        return y + '-' + String(mon).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+        return y + '-' + String(mon).padStart(2, '0') + '-' + String(d).padStart(2, '0');
       }
     }
     return '';
@@ -129,7 +129,7 @@
         localStorage.setItem('rabcheck_buyer_place', JSON.stringify(extra));
         loadBuyerPlaceList();
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   var ACCOUNT_PREDEFINED = ['192-0-15683-6', '192-0-07030-3', '017-0-05633-3', 'โอนเงิน', '017-6-02728-9'];
@@ -210,6 +210,7 @@
   const receiptTableWrap = document.getElementById('receiptTableWrap');
   const receiptEmptyState = document.getElementById('receiptEmptyState');
   var lastListRows = [];
+  var lastCollectRows = [];
   var receiptFormDatePicker = null;
   var listDatePicker = null;
 
@@ -647,7 +648,7 @@
           })
           .catch(function () {
             var stored = sessionStorage.getItem('rabcheck_ocr_fields');
-            if (stored) try { applyOcrToForm(JSON.parse(stored)); } catch (e) {}
+            if (stored) try { applyOcrToForm(JSON.parse(stored)); } catch (e) { }
           });
       }
       entryModal.classList.remove('hidden');
@@ -778,279 +779,279 @@
   });
 
   if (receiptForm) {
-  function openReceiptForm(mode, id) {
-        var isCreate = mode === 'create' || !id;
-        document.getElementById('receiptFormModeLabel').textContent = isCreate ? 'เพิ่ม' : 'แก้ไข';
-        document.getElementById('receiptFormTitle').textContent = isCreate ? 'เพิ่มรายการใบเสร็จ' : 'แก้ไขรายการใบเสร็จ';
-        var btnDel = document.getElementById('btnDeleteReceipt');
-        if (btnDel) btnDel.style.display = isCreate ? 'none' : '';
-        if (isCreate) {
-          clearReceiptForm();
-          var uploadId = sessionStorage.getItem('rabcheck_current_upload');
-          if (uploadId) {
-            fetch(API + '/api/upload/' + uploadId + '/ocr')
-              .then(function (r) { return r.json(); })
-              .then(function (ocr) {
-                var f = (ocr && ocr.fields) ? ocr.fields : {};
-                if (f.cheque_no) document.getElementById('rfChequeNo').value = String(f.cheque_no).trim();
-                if (f.date) {
-                  var d = dateToIso(f.date);
-                  if (d && receiptFormDatePicker) receiptFormDatePicker.setDate(d, false);
-                }
-                if (f.iv_no) document.getElementById('rfIvNo').value = String(f.iv_no).trim();
-                if (f.book_no) document.getElementById('rfBookNo').value = String(f.book_no).trim();
-              })
-              .catch(function () {});
-          }
-        } else {
-          fetch(API + '/api/entries/' + id)
-            .then(function (r) { return r.json(); })
-            .then(function (row) {
-              document.getElementById('rfId').value = row.id;
-              var dateVal = dateToIso(row.date || '') || '';
-              if (receiptFormDatePicker) receiptFormDatePicker.setDate(dateVal, false);
-              document.getElementById('rfDepositTime').value = row.deposit_time || '';
-              document.getElementById('rfBookNo').value = row.book_no || '';
-              document.getElementById('rfIvNo').value = row.iv_no || '';
-              document.getElementById('rfChequeNo').value = row.cheque_no || '';
-              var acc = row.account || '';
-              var fAcc = document.getElementById('rfAccount');
-              var fAccOther = document.getElementById('rfAccountOther');
-              var accRemoved = getAccountRemovedList();
-              var predefined = ACCOUNT_PREDEFINED.filter(function (v) { return accRemoved.indexOf(v) === -1; }).concat(getAccountExtraList());
-              if (acc && predefined.indexOf(acc) === -1) {
-                fAcc.value = '__other__';
-                fAccOther.value = acc;
-                fAccOther.classList.remove('hidden');
-              } else {
-                fAcc.value = acc;
-                fAccOther.value = '';
-                fAccOther.classList.add('hidden');
-              }
-              document.getElementById('rfAmount').value = row.amount != null ? formatAmountDisplay(row.amount) : '';
-              syncReceiptTotal();
-              document.getElementById('rfBuyerPlace').value = row.buyer_place || '';
-              document.getElementById('rfChequeSource').value = row.cheque_source || '';
-              document.getElementById('rfStatus').value = row.status || '';
-              document.getElementById('rfMemo').value = row.memo || '';
-            })
-            .catch(function () { alert('โหลดรายการไม่สำเร็จ'); });
-        }
-        openReceiptDrawer();
-      }
-
-      function clearReceiptForm() {
-        document.getElementById('rfId').value = '';
-        document.getElementById('rfDate').value = '';
-        if (receiptFormDatePicker) receiptFormDatePicker.clear();
-        document.getElementById('rfDepositTime').value = '';
-        document.getElementById('rfBookNo').value = '';
-        document.getElementById('rfIvNo').value = '';
-        document.getElementById('rfChequeNo').value = '';
-        document.getElementById('rfAccount').value = '';
-        document.getElementById('rfAccountOther').value = '';
-        document.getElementById('rfAccountOther').classList.add('hidden');
-        document.getElementById('rfAmount').value = '';
-        document.getElementById('rfVat').value = '';
-        document.getElementById('rfTotalAmount').value = '';
-        document.getElementById('rfBuyerPlace').value = '';
-        document.getElementById('rfTaxId').value = '';
-        document.getElementById('rfExpenseType').value = '';
-        document.getElementById('rfChequeSource').value = '';
-        document.getElementById('rfStatus').value = '';
-        document.getElementById('rfMemo').value = '';
-      }
-
-      function syncReceiptTotal() {
-        var v = (document.getElementById('rfAmount').value || '').replace(/,/g, '').trim();
-        var vat = (document.getElementById('rfVat').value || '').replace(/,/g, '').trim();
-        var n = parseFloat(v);
-        var nVat = parseFloat(vat);
-        if (!isNaN(n) && n >= 0) {
-          var total = isNaN(nVat) ? n : n + nVat;
-          document.getElementById('rfTotalAmount').value = formatAmountDisplay(total);
-        } else {
-          document.getElementById('rfTotalAmount').value = '';
-        }
-      }
-
-      function openReceiptDrawer() {
-        if (window.matchMedia('(max-width: 768px)').matches) {
-          receiptFormPanel.classList.add('drawer-open');
-          if (receiptFormBackdrop) {
-            receiptFormBackdrop.classList.add('show');
-            receiptFormBackdrop.setAttribute('aria-hidden', 'false');
-          }
-          if (btnCloseReceiptDrawer) btnCloseReceiptDrawer.style.display = 'block';
-        }
-      }
-
-      function closeReceiptDrawer() {
-        receiptFormPanel.classList.remove('drawer-open');
-        if (receiptFormBackdrop) {
-          receiptFormBackdrop.classList.remove('show');
-          receiptFormBackdrop.setAttribute('aria-hidden', 'true');
-        }
-        if (btnCloseReceiptDrawer) btnCloseReceiptDrawer.style.display = 'none';
-      }
-
-      if (receiptFormBackdrop) {
-        receiptFormBackdrop.addEventListener('click', function () {
-          closeReceiptDrawer();
-        });
-      }
-      if (btnCloseReceiptDrawer) {
-        btnCloseReceiptDrawer.addEventListener('click', function () {
-          closeReceiptDrawer();
-        });
-      }
-      if (btnCancelReceiptForm) {
-        btnCancelReceiptForm.addEventListener('click', function () {
-          clearReceiptForm();
-          document.getElementById('receiptFormModeLabel').textContent = 'เพิ่ม';
-          document.getElementById('receiptFormTitle').textContent = 'เพิ่มรายการใบเสร็จ';
-          closeReceiptDrawer();
-        });
-      }
-
-      var saveAndAddNext = false;
-      if (btnSaveAndAdd) {
-        btnSaveAndAdd.addEventListener('click', function () {
-          saveAndAddNext = true;
-        });
-      }
-
-      receiptForm.addEventListener('submit', function (e) {
-        e.preventDefault();
-        var id = document.getElementById('rfId').value;
+    function openReceiptForm(mode, id) {
+      var isCreate = mode === 'create' || !id;
+      document.getElementById('receiptFormModeLabel').textContent = isCreate ? 'เพิ่ม' : 'แก้ไข';
+      document.getElementById('receiptFormTitle').textContent = isCreate ? 'เพิ่มรายการใบเสร็จ' : 'แก้ไขรายการใบเสร็จ';
+      var btnDel = document.getElementById('btnDeleteReceipt');
+      if (btnDel) btnDel.style.display = isCreate ? 'none' : '';
+      if (isCreate) {
+        clearReceiptForm();
         var uploadId = sessionStorage.getItem('rabcheck_current_upload');
-        var payload = {
-          upload_id: uploadId ? parseInt(uploadId, 10) : null,
-          date: (function () {
-            if (receiptFormDatePicker && receiptFormDatePicker.selectedDates && receiptFormDatePicker.selectedDates[0]) {
-              var d = receiptFormDatePicker.selectedDates[0];
-              return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-            }
-            return (document.getElementById('rfDate').value || '').trim() || null;
-          })(),
-          deposit_time: document.getElementById('rfDepositTime').value || null,
-          book_no: document.getElementById('rfBookNo').value || null,
-          iv_no: document.getElementById('rfIvNo').value || null,
-          cheque_no: document.getElementById('rfChequeNo').value || null,
-          account: (function () {
-            var v = document.getElementById('rfAccount').value;
-            if (v === '__other__') return document.getElementById('rfAccountOther').value || null;
-            return v || null;
-          })(),
-          amount: (function () { var v = (document.getElementById('rfAmount').value || '').replace(/,/g, ''); return v ? v : null; })(),
-          total_amount: (function () { var v = (document.getElementById('rfTotalAmount').value || '').replace(/,/g, ''); return v ? v : null; })(),
-          buyer_place: document.getElementById('rfBuyerPlace').value || null,
-          cheque_source: document.getElementById('rfChequeSource').value || null,
-          status: document.getElementById('rfStatus').value || null,
-          memo: document.getElementById('rfMemo').value || null
-        };
-        var url = API + '/api/entries';
-        var method = 'POST';
-        if (id) {
-          url += '/' + id;
-          method = 'PUT';
-        }
-        fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-          .then(function (r) { return r.json(); })
-          .then(function (data) {
-            if (data.error) {
-              alert(data.error);
-              return;
-            }
-            saveBuyerPlaceExtra(payload.buyer_place);
-            loadEntries();
-            if (saveAndAddNext) {
-              saveAndAddNext = false;
-              clearReceiptForm();
-              document.getElementById('receiptFormModeLabel').textContent = 'เพิ่ม';
-              document.getElementById('receiptFormTitle').textContent = 'เพิ่มรายการใบเสร็จ';
-              var uploadId = sessionStorage.getItem('rabcheck_current_upload');
-              if (uploadId) {
-                fetch(API + '/api/upload/' + uploadId + '/ocr')
-                  .then(function (r) { return r.json(); })
-                  .then(function (ocr) {
-                    var f = (ocr && ocr.fields) ? ocr.fields : {};
-                    if (f.cheque_no) document.getElementById('rfChequeNo').value = String(f.cheque_no).trim();
-                  })
-                  .catch(function () {});
-              }
-            } else {
-              closeReceiptDrawer();
-            }
-          })
-          .catch(function () { alert('บันทึกไม่สำเร็จ'); });
-      });
-
-      document.getElementById('rfAmount').addEventListener('blur', function () {
-        var v = this.value.replace(/,/g, '').trim();
-        if (!v) { syncReceiptTotal(); return; }
-        var n = parseFloat(v);
-        if (!isNaN(n)) {
-          this.value = formatAmountDisplay(n);
-          syncReceiptTotal();
-        }
-      });
-      document.getElementById('rfAmount').addEventListener('input', syncReceiptTotal);
-      document.getElementById('rfVat').addEventListener('input', syncReceiptTotal);
-      document.getElementById('rfVat').addEventListener('blur', function () {
-        var v = this.value.replace(/,/g, '').trim();
-        if (v) {
-          var n = parseFloat(v);
-          if (!isNaN(n)) this.value = formatAmountDisplay(n);
-        }
-        syncReceiptTotal();
-      });
-      document.getElementById('rfAccount').addEventListener('change', function () {
-        var other = document.getElementById('rfAccountOther');
-        if (this.value === '__other__') {
-          other.classList.remove('hidden');
-          other.focus();
-        } else {
-          other.classList.add('hidden');
-          other.value = '';
-        }
-      });
-
-      var btnDeleteReceipt = document.getElementById('btnDeleteReceipt');
-      if (btnDeleteReceipt) {
-        btnDeleteReceipt.addEventListener('click', function () {
-          var id = document.getElementById('rfId').value;
-          if (!id || !confirm('ต้องการลบรายการนี้?')) return;
-          fetch(API + '/api/entries/' + id, { method: 'DELETE' })
+        if (uploadId) {
+          fetch(API + '/api/upload/' + uploadId + '/ocr')
             .then(function (r) { return r.json(); })
-            .then(function (res) {
-              if (res.error) { alert(res.error); return; }
-              clearReceiptForm();
-              document.getElementById('receiptFormModeLabel').textContent = 'เพิ่ม';
-              document.getElementById('receiptFormTitle').textContent = 'เพิ่มรายการใบเสร็จ';
-              if (btnDeleteReceipt) btnDeleteReceipt.style.display = 'none';
-              loadEntries();
-              closeReceiptDrawer();
+            .then(function (ocr) {
+              var f = (ocr && ocr.fields) ? ocr.fields : {};
+              if (f.cheque_no) document.getElementById('rfChequeNo').value = String(f.cheque_no).trim();
+              if (f.date) {
+                var d = dateToIso(f.date);
+                if (d && receiptFormDatePicker) receiptFormDatePicker.setDate(d, false);
+              }
+              if (f.iv_no) document.getElementById('rfIvNo').value = String(f.iv_no).trim();
+              if (f.book_no) document.getElementById('rfBookNo').value = String(f.book_no).trim();
             })
-            .catch(function () { alert('ลบไม่สำเร็จ'); });
-        });
+            .catch(function () { });
+        }
+      } else {
+        fetch(API + '/api/entries/' + id)
+          .then(function (r) { return r.json(); })
+          .then(function (row) {
+            document.getElementById('rfId').value = row.id;
+            var dateVal = dateToIso(row.date || '') || '';
+            if (receiptFormDatePicker) receiptFormDatePicker.setDate(dateVal, false);
+            document.getElementById('rfDepositTime').value = row.deposit_time || '';
+            document.getElementById('rfBookNo').value = row.book_no || '';
+            document.getElementById('rfIvNo').value = row.iv_no || '';
+            document.getElementById('rfChequeNo').value = row.cheque_no || '';
+            var acc = row.account || '';
+            var fAcc = document.getElementById('rfAccount');
+            var fAccOther = document.getElementById('rfAccountOther');
+            var accRemoved = getAccountRemovedList();
+            var predefined = ACCOUNT_PREDEFINED.filter(function (v) { return accRemoved.indexOf(v) === -1; }).concat(getAccountExtraList());
+            if (acc && predefined.indexOf(acc) === -1) {
+              fAcc.value = '__other__';
+              fAccOther.value = acc;
+              fAccOther.classList.remove('hidden');
+            } else {
+              fAcc.value = acc;
+              fAccOther.value = '';
+              fAccOther.classList.add('hidden');
+            }
+            document.getElementById('rfAmount').value = row.amount != null ? formatAmountDisplay(row.amount) : '';
+            syncReceiptTotal();
+            document.getElementById('rfBuyerPlace').value = row.buyer_place || '';
+            document.getElementById('rfChequeSource').value = row.cheque_source || '';
+            document.getElementById('rfStatus').value = row.status || '';
+            document.getElementById('rfMemo').value = row.memo || '';
+          })
+          .catch(function () { alert('โหลดรายการไม่สำเร็จ'); });
       }
+      openReceiptDrawer();
+    }
 
-      function initReceiptFormDatePicker() {
-        if (receiptFormDatePicker || typeof flatpickr === 'undefined' || !document.getElementById('rfDate')) return;
-        var months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-        receiptFormDatePicker = flatpickr('#rfDate', {
-          locale: (flatpickr.l10ns && flatpickr.l10ns.th) ? flatpickr.l10ns.th : 'th',
-          dateFormat: 'Y-m-d',
-          altInput: true,
-          altFormat: 'j M Y',
-          formatDate: function (date) {
-            return date.getDate() + ' ' + months[date.getMonth()] + ' ' + (date.getFullYear() + 543);
-          },
-          allowInput: false
-        });
+    function clearReceiptForm() {
+      document.getElementById('rfId').value = '';
+      document.getElementById('rfDate').value = '';
+      if (receiptFormDatePicker) receiptFormDatePicker.clear();
+      document.getElementById('rfDepositTime').value = '';
+      document.getElementById('rfBookNo').value = '';
+      document.getElementById('rfIvNo').value = '';
+      document.getElementById('rfChequeNo').value = '';
+      document.getElementById('rfAccount').value = '';
+      document.getElementById('rfAccountOther').value = '';
+      document.getElementById('rfAccountOther').classList.add('hidden');
+      document.getElementById('rfAmount').value = '';
+      document.getElementById('rfVat').value = '';
+      document.getElementById('rfTotalAmount').value = '';
+      document.getElementById('rfBuyerPlace').value = '';
+      document.getElementById('rfTaxId').value = '';
+      document.getElementById('rfExpenseType').value = '';
+      document.getElementById('rfChequeSource').value = '';
+      document.getElementById('rfStatus').value = '';
+      document.getElementById('rfMemo').value = '';
+    }
+
+    function syncReceiptTotal() {
+      var v = (document.getElementById('rfAmount').value || '').replace(/,/g, '').trim();
+      var vat = (document.getElementById('rfVat').value || '').replace(/,/g, '').trim();
+      var n = parseFloat(v);
+      var nVat = parseFloat(vat);
+      if (!isNaN(n) && n >= 0) {
+        var total = isNaN(nVat) ? n : n + nVat;
+        document.getElementById('rfTotalAmount').value = formatAmountDisplay(total);
+      } else {
+        document.getElementById('rfTotalAmount').value = '';
       }
-      initReceiptFormDatePicker();
+    }
+
+    function openReceiptDrawer() {
+      if (window.matchMedia('(max-width: 768px)').matches) {
+        receiptFormPanel.classList.add('drawer-open');
+        if (receiptFormBackdrop) {
+          receiptFormBackdrop.classList.add('show');
+          receiptFormBackdrop.setAttribute('aria-hidden', 'false');
+        }
+        if (btnCloseReceiptDrawer) btnCloseReceiptDrawer.style.display = 'block';
+      }
+    }
+
+    function closeReceiptDrawer() {
+      receiptFormPanel.classList.remove('drawer-open');
+      if (receiptFormBackdrop) {
+        receiptFormBackdrop.classList.remove('show');
+        receiptFormBackdrop.setAttribute('aria-hidden', 'true');
+      }
+      if (btnCloseReceiptDrawer) btnCloseReceiptDrawer.style.display = 'none';
+    }
+
+    if (receiptFormBackdrop) {
+      receiptFormBackdrop.addEventListener('click', function () {
+        closeReceiptDrawer();
+      });
+    }
+    if (btnCloseReceiptDrawer) {
+      btnCloseReceiptDrawer.addEventListener('click', function () {
+        closeReceiptDrawer();
+      });
+    }
+    if (btnCancelReceiptForm) {
+      btnCancelReceiptForm.addEventListener('click', function () {
+        clearReceiptForm();
+        document.getElementById('receiptFormModeLabel').textContent = 'เพิ่ม';
+        document.getElementById('receiptFormTitle').textContent = 'เพิ่มรายการใบเสร็จ';
+        closeReceiptDrawer();
+      });
+    }
+
+    var saveAndAddNext = false;
+    if (btnSaveAndAdd) {
+      btnSaveAndAdd.addEventListener('click', function () {
+        saveAndAddNext = true;
+      });
+    }
+
+    receiptForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var id = document.getElementById('rfId').value;
+      var uploadId = sessionStorage.getItem('rabcheck_current_upload');
+      var payload = {
+        upload_id: uploadId ? parseInt(uploadId, 10) : null,
+        date: (function () {
+          if (receiptFormDatePicker && receiptFormDatePicker.selectedDates && receiptFormDatePicker.selectedDates[0]) {
+            var d = receiptFormDatePicker.selectedDates[0];
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+          }
+          return (document.getElementById('rfDate').value || '').trim() || null;
+        })(),
+        deposit_time: document.getElementById('rfDepositTime').value || null,
+        book_no: document.getElementById('rfBookNo').value || null,
+        iv_no: document.getElementById('rfIvNo').value || null,
+        cheque_no: document.getElementById('rfChequeNo').value || null,
+        account: (function () {
+          var v = document.getElementById('rfAccount').value;
+          if (v === '__other__') return document.getElementById('rfAccountOther').value || null;
+          return v || null;
+        })(),
+        amount: (function () { var v = (document.getElementById('rfAmount').value || '').replace(/,/g, ''); return v ? v : null; })(),
+        total_amount: (function () { var v = (document.getElementById('rfTotalAmount').value || '').replace(/,/g, ''); return v ? v : null; })(),
+        buyer_place: document.getElementById('rfBuyerPlace').value || null,
+        cheque_source: document.getElementById('rfChequeSource').value || null,
+        status: document.getElementById('rfStatus').value || null,
+        memo: document.getElementById('rfMemo').value || null
+      };
+      var url = API + '/api/entries';
+      var method = 'POST';
+      if (id) {
+        url += '/' + id;
+        method = 'PUT';
+      }
+      fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.error) {
+            alert(data.error);
+            return;
+          }
+          saveBuyerPlaceExtra(payload.buyer_place);
+          loadEntries();
+          if (saveAndAddNext) {
+            saveAndAddNext = false;
+            clearReceiptForm();
+            document.getElementById('receiptFormModeLabel').textContent = 'เพิ่ม';
+            document.getElementById('receiptFormTitle').textContent = 'เพิ่มรายการใบเสร็จ';
+            var uploadId = sessionStorage.getItem('rabcheck_current_upload');
+            if (uploadId) {
+              fetch(API + '/api/upload/' + uploadId + '/ocr')
+                .then(function (r) { return r.json(); })
+                .then(function (ocr) {
+                  var f = (ocr && ocr.fields) ? ocr.fields : {};
+                  if (f.cheque_no) document.getElementById('rfChequeNo').value = String(f.cheque_no).trim();
+                })
+                .catch(function () { });
+            }
+          } else {
+            closeReceiptDrawer();
+          }
+        })
+        .catch(function () { alert('บันทึกไม่สำเร็จ'); });
+    });
+
+    document.getElementById('rfAmount').addEventListener('blur', function () {
+      var v = this.value.replace(/,/g, '').trim();
+      if (!v) { syncReceiptTotal(); return; }
+      var n = parseFloat(v);
+      if (!isNaN(n)) {
+        this.value = formatAmountDisplay(n);
+        syncReceiptTotal();
+      }
+    });
+    document.getElementById('rfAmount').addEventListener('input', syncReceiptTotal);
+    document.getElementById('rfVat').addEventListener('input', syncReceiptTotal);
+    document.getElementById('rfVat').addEventListener('blur', function () {
+      var v = this.value.replace(/,/g, '').trim();
+      if (v) {
+        var n = parseFloat(v);
+        if (!isNaN(n)) this.value = formatAmountDisplay(n);
+      }
+      syncReceiptTotal();
+    });
+    document.getElementById('rfAccount').addEventListener('change', function () {
+      var other = document.getElementById('rfAccountOther');
+      if (this.value === '__other__') {
+        other.classList.remove('hidden');
+        other.focus();
+      } else {
+        other.classList.add('hidden');
+        other.value = '';
+      }
+    });
+
+    var btnDeleteReceipt = document.getElementById('btnDeleteReceipt');
+    if (btnDeleteReceipt) {
+      btnDeleteReceipt.addEventListener('click', function () {
+        var id = document.getElementById('rfId').value;
+        if (!id || !confirm('ต้องการลบรายการนี้?')) return;
+        fetch(API + '/api/entries/' + id, { method: 'DELETE' })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            if (res.error) { alert(res.error); return; }
+            clearReceiptForm();
+            document.getElementById('receiptFormModeLabel').textContent = 'เพิ่ม';
+            document.getElementById('receiptFormTitle').textContent = 'เพิ่มรายการใบเสร็จ';
+            if (btnDeleteReceipt) btnDeleteReceipt.style.display = 'none';
+            loadEntries();
+            closeReceiptDrawer();
+          })
+          .catch(function () { alert('ลบไม่สำเร็จ'); });
+      });
+    }
+
+    function initReceiptFormDatePicker() {
+      if (receiptFormDatePicker || typeof flatpickr === 'undefined' || !document.getElementById('rfDate')) return;
+      var months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+      receiptFormDatePicker = flatpickr('#rfDate', {
+        locale: (flatpickr.l10ns && flatpickr.l10ns.th) ? flatpickr.l10ns.th : 'th',
+        dateFormat: 'Y-m-d',
+        altInput: true,
+        altFormat: 'j M Y',
+        formatDate: function (date) {
+          return date.getDate() + ' ' + months[date.getMonth()] + ' ' + (date.getFullYear() + 543);
+        },
+        allowInput: false
+      });
+    }
+    initReceiptFormDatePicker();
   }
 
   if (document.getElementById('listSearch')) {
@@ -1562,42 +1563,55 @@
     return raw;
   }
 
-  function loadCollect() {
-    var dateFilter = getCollectDateValue();
-    var url = API + '/api/entries';
-    if (dateFilter) url += '?date=' + encodeURIComponent(dateFilter);
-    fetch(url)
-      .then(function (r) { return r.json(); })
-      .then(function (rows) {
-        rows = sortByDate(sortByBookNo(rows), getDateSortOrder());
-        if (!rows.length) {
-          collectTableBody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:24px;">ไม่มีรายการ' + (dateFilter ? ' ในวันที่เลือก' : '') + '</td></tr>';
-          return;
-        }
-        collectTableBody.innerHTML = rows.map(function (row) {
-          var amt = row.amount != null ? formatNumber(row.amount) : '-';
-          var total = row.total_amount != null ? formatNumber(row.total_amount) : '-';
-          return (
-            '<tr>' +
-            '<td class="actions"><button type="button" class="edit" data-id="' + row.id + '">แก้ไข</button></td>' +
-            '<td>' + escapeHtml(formatDateThai(row.date || '') || '-') + '</td>' +
-            '<td>' + escapeHtml(row.deposit_time || '-') + '</td>' +
-            '<td>' + escapeHtml(row.book_no || '-') + '</td>' +
-            '<td>' + escapeHtml(row.iv_no || '-') + '</td>' +
-            '<td>' + escapeHtml(row.cheque_no || '-') + '</td>' +
-            '<td>' + escapeHtml(row.account || '-') + '</td>' +
-            '<td class="amount">' + amt + '</td>' +
-            '<td class="amount">' + total + '</td>' +
-            '<td>' + escapeHtml(row.buyer_place || '-') + '</td>' +
-            '<td>' + escapeHtml(row.cheque_source || '-') + '</td>' +
-            '<td>' + escapeHtml(row.status || '-') + '</td>' +
-            '</tr>'
-          );
-        }).join('');
-      })
-      .catch(function () {
-        collectTableBody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:24px;color:red;">โหลดข้อมูลไม่สำเร็จ</td></tr>';
-      });
+  function getCollectSearchQuery() {
+    var el = document.getElementById('collectSearch');
+    return (el && el.value) ? String(el.value).trim().toLowerCase() : '';
+  }
+
+  function filterCollectRowsBySearch(rows) {
+    var q = getCollectSearchQuery();
+    if (!q) return rows;
+    return rows.filter(function (row) {
+      var text = [
+        row.buyer_place,
+        row.book_no,
+        row.iv_no,
+        row.cheque_no,
+        row.account,
+        row.cheque_source,
+        row.status
+      ].join(' ').toLowerCase();
+      return text.indexOf(q) !== -1;
+    });
+  }
+
+  function renderCollectTable(rows) {
+    var filtered = filterCollectRowsBySearch(rows);
+    if (!filtered.length) {
+      var msg = rows.length ? 'ไม่พบรายการที่ตรงกับคำค้น' : 'ไม่มีรายการ';
+      collectTableBody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:24px;color:var(--text-muted);">' + msg + '</td></tr>';
+      return;
+    }
+    collectTableBody.innerHTML = filtered.map(function (row) {
+      var amt = row.amount != null ? formatNumber(row.amount) : '-';
+      var total = row.total_amount != null ? formatNumber(row.total_amount) : '-';
+      return (
+        '<tr>' +
+        '<td class="actions"><button type="button" class="edit" data-id="' + row.id + '">แก้ไข</button></td>' +
+        '<td>' + escapeHtml(formatDateThai(row.date || '') || '-') + '</td>' +
+        '<td>' + escapeHtml(row.deposit_time || '-') + '</td>' +
+        '<td>' + escapeHtml(row.book_no || '-') + '</td>' +
+        '<td>' + escapeHtml(row.iv_no || '-') + '</td>' +
+        '<td>' + escapeHtml(row.cheque_no || '-') + '</td>' +
+        '<td>' + escapeHtml(row.account || '-') + '</td>' +
+        '<td class="amount">' + amt + '</td>' +
+        '<td class="amount">' + total + '</td>' +
+        '<td>' + escapeHtml(row.buyer_place || '-') + '</td>' +
+        '<td>' + escapeHtml(row.cheque_source || '-') + '</td>' +
+        '<td>' + escapeHtml(row.status || '-') + '</td>' +
+        '</tr>'
+      );
+    }).join('');
     collectTableBody.querySelectorAll('button.edit').forEach(function (btn) {
       btn.addEventListener('click', function () {
         openEdit(parseInt(this.getAttribute('data-id'), 10));
@@ -1605,7 +1619,28 @@
     });
   }
 
+  function loadCollect() {
+    var dateFilter = getCollectDateValue();
+    var url = API + '/api/entries';
+    if (dateFilter) url += '?date=' + encodeURIComponent(dateFilter);
+    fetch(url)
+      .then(function (r) { return r.json(); })
+      .then(function (rows) {
+        lastCollectRows = sortByDate(sortByBookNo(rows), getDateSortOrder());
+        renderCollectTable(lastCollectRows);
+      })
+      .catch(function () {
+        collectTableBody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:24px;color:red;">โหลดข้อมูลไม่สำเร็จ</td></tr>';
+      });
+  }
+
   document.getElementById('btnCollectRefresh').addEventListener('click', loadCollect);
+
+  if (document.getElementById('collectSearch')) {
+    document.getElementById('collectSearch').addEventListener('input', function () {
+      if (lastCollectRows.length) renderCollectTable(lastCollectRows);
+    });
+  }
 
   function getCollectData() {
     return new Promise(function (resolve) {
@@ -1624,17 +1659,17 @@
   document.getElementById('btnExportCsv').addEventListener('click', function () {
     getCollectData().then(function (rows) {
       if (!rows.length) { alert('ไม่มีข้อมูลที่จะส่งออก'); return; }
-      var headers = ['วัน/เดือน/ปี','เวลานำฝาก','เล่มที่/เลขที่','เลขที่ IV','เช็คเลขที่','เข้าบัญชี','จำนวนเงิน','รวมจำนวนเงิน','ชื่อผู้ซื้อ/สถานที่','ที่มาเช็ค','สถานะ'];
+      var headers = ['วัน/เดือน/ปี', 'เวลานำฝาก', 'เล่มที่/เลขที่', 'เลขที่ IV', 'เช็คเลขที่', 'เข้าบัญชี', 'จำนวนเงิน', 'รวมจำนวนเงิน', 'ชื่อผู้ซื้อ/สถานที่', 'ที่มาเช็ค', 'สถานะ'];
       var csv = headers.join(',') + '\n';
       rows.forEach(function (row) {
         var d = formatDateThai(row.date || '') || '';
-        var r = [d, row.deposit_time||'', row.book_no||'', row.iv_no||'', row.cheque_no||'', row.account||'', row.amount||'', row.total_amount||'', (row.buyer_place||'').replace(/"/g,'""'), row.cheque_source||'', row.status||''];
-        csv += r.map(function (v) { return '"' + String(v).replace(/"/g,'""') + '"'; }).join(',') + '\n';
+        var r = [d, row.deposit_time || '', row.book_no || '', row.iv_no || '', row.cheque_no || '', row.account || '', row.amount || '', row.total_amount || '', (row.buyer_place || '').replace(/"/g, '""'), row.cheque_source || '', row.status || ''];
+        csv += r.map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(',') + '\n';
       });
       var blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
       var a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = 'rabcheck_' + new Date().toISOString().slice(0,10) + '.csv';
+      a.download = 'rabcheck_' + new Date().toISOString().slice(0, 10) + '.csv';
       a.click();
       URL.revokeObjectURL(a.href);
     });

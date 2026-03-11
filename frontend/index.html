@@ -91,6 +91,10 @@
             </div>
             <button type="button" id="btnListClearDate" class="btn-secondary">ล้าง (แสดงทั้งหมด)</button>
             <button type="button" id="btnListDateSort" class="btn-secondary" title="สลับเรียงตามวันที่">เรียง: เก่า → ใหม่</button>
+            <div class="search-input-wrap">
+              <label for="listSearch">ค้นหา:</label>
+              <input type="text" id="listSearch" class="search-input" placeholder="พิมพ์ชื่อผู้ซื้อ/สถานที่...">
+            </div>
           </div>
           <div class="list-actions">
             <button type="button" id="btnShowAll" class="btn-secondary" style="display:none;">แสดงทั้งหมด</button>
@@ -145,6 +149,10 @@
           <button type="button" id="btnExportCsv">ส่งออก CSV</button>
           <button type="button" id="btnSendToSheet">ส่งไป Google Sheet</button>
             <button type="button" id="btnSheetConfig" class="btn-secondary">ตั้งค่า URL</button>
+          <div class="search-input-wrap">
+            <label for="collectSearch">ค้นหา:</label>
+            <input type="text" id="collectSearch" class="search-input" placeholder="พิมพ์ชื่อผู้ซื้อ/สถานที่...">
+          </div>
         </div>
         <div class="table-wrap">
           <table class="data-table">
