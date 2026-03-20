@@ -167,7 +167,19 @@ def init_db():
         if USE_PG:
             cur = conn.cursor()
             cur.execute(_PG_SCHEMA)
+            # ตรวจสอบและเพิ่มคอลัมน์ image_data ถ้ายังไม่มี
+            cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='uploads' AND column_name='image_data'")
+            if not cur.fetchone():
+                print("[database] Adding image_data column to PostgreSQL uploads")
+                cur.execute("ALTER TABLE uploads ADD COLUMN image_data BYTEA")
+            conn.commit()
             print("[database] PostgreSQL tables ready")
         else:
+            # สำหรับ SQLite
             conn.executescript(_SQLITE_SCHEMA)
+            cur = conn.execute("PRAGMA table_info(uploads)")
+            columns = [row[1] for row in cur.fetchall()]
+            if 'image_data' not in columns:
+                print("[database] Adding image_data column to SQLite uploads")
+                conn.execute("ALTER TABLE uploads ADD COLUMN image_data BLOB")
             print("[database] SQLite tables ready")
