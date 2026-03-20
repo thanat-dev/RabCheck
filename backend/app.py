@@ -10,8 +10,9 @@ from flask import Flask, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
+import sqlite3
 from config import UPLOAD_FOLDER, ALLOWED_EXTENSIONS, BASE_DIR
-from database import get_db, init_db, execute, execute_returning_id, fetchone, fetchall
+from database import get_db, init_db, execute, execute_returning_id, fetchone, fetchall, USE_PG
 
 app = Flask(__name__, static_folder='../frontend', static_url_path='')
 CORS(app)
@@ -42,13 +43,16 @@ def upload():
     ext = f.filename.rsplit('.', 1)[1].lower()
     filename = f"{uuid.uuid4().hex}.{ext}"
     path = os.path.join(UPLOAD_FOLDER, filename)
-    f.save(path)
+    # อ่านข้อมูลรูปเป็น binary
+    image_data = f.read()
+    f.seek(0) # reset pointer for f.save if still needed, but we'll save to DB
+    f.save(path) # keep local save as fallback/cache if desired, but DB is primary
 
     with get_db() as conn:
         upload_id = execute_returning_id(
             conn,
-            "INSERT INTO uploads (image_path) VALUES (?)",
-            (filename,)
+            "INSERT INTO uploads (image_path, image_data) VALUES (?, ?)",
+            (filename, image_data if USE_PG else sqlite3.Binary(image_data))
         )
 
     return jsonify({
@@ -65,6 +69,20 @@ def get_upload_ocr(upload_id):
 
 @app.route('/api/uploads/<filename>')
 def serve_upload(filename):
+    # ลองหาใน DB ก่อน (สำหรับ Render ที่ไฟล์บน disk หายไป)
+    with get_db() as conn:
+        row = fetchone(conn, "SELECT image_data FROM uploads WHERE image_path = ?", (filename,))
+        if row and row['image_data']:
+            content = row['image_data']
+            # ถ้าเป็น memoryview (จาก pg) หรือ bytes ให้ส่งออกไปเลย
+            import mimetypes
+            mime, _ = mimetypes.guess_type(filename)
+            return send_file(
+                io.BytesIO(content),
+                mimetype=mime or 'image/jpeg'
+            )
+
+    # ถ้าไม่เจอใน DB (หรือ DB ไม่มี data) ให้ลองหาใน disk (fallback)
     return send_from_directory(UPLOAD_FOLDER, filename)
 
 @app.route('/api/upload/<int:upload_id>', methods=['DELETE'])

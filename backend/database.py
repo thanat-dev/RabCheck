@@ -100,6 +100,7 @@ _PG_SCHEMA = """
 CREATE TABLE IF NOT EXISTS uploads (
     id SERIAL PRIMARY KEY,
     image_path TEXT NOT NULL,
+    image_data BYTEA,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -133,6 +134,7 @@ _SQLITE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS uploads (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     image_path TEXT NOT NULL,
+    image_data BLOB,
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
 CREATE TABLE IF NOT EXISTS entries (
