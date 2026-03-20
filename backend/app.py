@@ -85,6 +85,35 @@ def serve_upload(filename):
     # ถ้าไม่เจอใน DB (หรือ DB ไม่มี data) ให้ลองหาใน disk (fallback)
     return send_from_directory(UPLOAD_FOLDER, filename)
 
+@app.route('/api/admin/sync-image', methods=['POST'])
+def admin_sync_image():
+    # Basic security - check for token in header
+    token = request.headers.get('X-Admin-Token')
+    if not token or token != 'SYNC_SECRET_12345':
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    data = request.json
+    upload_id = data.get('id')
+    filename = data.get('image_path')
+    image_data_b64 = data.get('image_data') # Base64 string
+    
+    if not upload_id or not image_data_b64:
+        return jsonify({"error": "Missing data"}), 400
+    
+    import base64
+    try:
+        image_data = base64.b64decode(image_data_b64)
+        with get_db() as conn:
+            from database import execute
+            execute(
+                conn,
+                "UPDATE uploads SET image_data = ? WHERE id = ?",
+                (sqlite3.Binary(image_data) if not USE_PG else image_data, upload_id)
+            )
+        return jsonify({"status": "success", "id": upload_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/upload/<int:upload_id>', methods=['DELETE'])
 def delete_upload(upload_id):
     """ยกเลิกอัพโหลด — ลบรูปและรายการที่ผูกกับชุดนี้"""
