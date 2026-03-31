@@ -508,12 +508,12 @@
       );
     }).join('');
     entriesTableBody.querySelectorAll('button.edit').forEach(function (btn) {
-      btn.addEventListener('click', function (e) { e.stopPropagation(); openEdit(parseInt(this.getAttribute('data-id'), 10)); });
+      btn.addEventListener('click', function (e) { e.stopPropagation(); openEdit(this.getAttribute('data-id')); });
     });
     entriesTableBody.querySelectorAll('button.delete').forEach(function (btn) {
       btn.addEventListener('click', function (e) {
         e.stopPropagation();
-        var id = parseInt(this.getAttribute('data-id'), 10);
+        var id = this.getAttribute('data-id');
         if (!id || !confirm('ต้องการลบรายการนี้?')) return;
         fetch(API + '/api/entries/' + id, { method: 'DELETE' })
           .then(function (r) { return r.json(); })
@@ -528,7 +528,7 @@
       tr.style.cursor = 'pointer';
       tr.addEventListener('click', function (e) {
         if (e.target.closest('.actions')) return;
-        openEdit(parseInt(tr.getAttribute('data-id'), 10));
+        openEdit(tr.getAttribute('data-id'));
       });
     });
   }
@@ -710,7 +710,7 @@
     var id = document.getElementById('entryId').value;
     var uploadId = sessionStorage.getItem('rabcheck_current_upload');
     var payload = {
-      upload_id: uploadId ? parseInt(uploadId, 10) : null,
+      upload_id: uploadId || null,
       date: document.getElementById('fDate').value || null,
       deposit_time: document.getElementById('fDepositTime').value || null,
       book_no: document.getElementById('fBookNo').value || null,
@@ -917,7 +917,7 @@
       var id = document.getElementById('rfId').value;
       var uploadId = sessionStorage.getItem('rabcheck_current_upload');
       var payload = {
-        upload_id: uploadId ? parseInt(uploadId, 10) : null,
+        upload_id: uploadId || null,
         date: (function () {
           if (receiptFormDatePicker && receiptFormDatePicker.selectedDates && receiptFormDatePicker.selectedDates[0]) {
             var d = receiptFormDatePicker.selectedDates[0];

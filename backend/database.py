@@ -1,185 +1,75 @@
 # -*- coding: utf-8 -*-
 """
-Database layer — รองรับทั้ง SQLite (local) และ PostgreSQL (Render Cloud)
-ถ้าตั้ง DATABASE_URL → ใช้ PostgreSQL
-ถ้าไม่ตั้ง → ใช้ SQLite เหมือนเดิม
+Database layer for Firebase Firestore and Cloud Storage
 """
-import sqlite3
 import os
-from contextlib import contextmanager
-from config import DATABASE_PATH, DATABASE_URL
+import json
+import firebase_admin
+from firebase_admin import credentials, firestore, storage
+from config import BASE_DIR
 
-# ---------- ตรวจว่าใช้ PostgreSQL หรือ SQLite ----------
-USE_PG = bool(DATABASE_URL)
+CREDENTIALS_PATH = os.path.join(BASE_DIR, 'firebase_credentials.json')
+firebase_app = None
 
-if USE_PG:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
+def init_firebase():
+    global firebase_app
+    if firebase_admin._apps:
+        firebase_app = firebase_admin.get_app()
+        return firebase_app
 
-# ---------- Connection ----------
-
-def get_connection():
-    if USE_PG:
-        conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-        conn.autocommit = False
-        return conn
+    cred = None
+    if os.path.exists(CREDENTIALS_PATH):
+        try:
+            cred = credentials.Certificate(CREDENTIALS_PATH)
+        except Exception as e:
+            print(f"⚠️ [database] Error reading file: {e}")
     else:
-        conn = sqlite3.connect(DATABASE_PATH)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = 1")
-        return conn
+        env_cred = os.environ.get('FIREBASE_CREDENTIALS')
+        if env_cred:
+            try:
+                cred_dict = json.loads(env_cred)
+                cred = credentials.Certificate(cred_dict)
+            except Exception as e:
+                print(f"⚠️ [database] Error reading FIREBASE_CREDENTIALS env var: {e}")
+        else:
+            print(f"⚠️ [database] ไม่พบไฟล์ {CREDENTIALS_PATH} และไม่มี Environment Variable FIREBASE_CREDENTIALS")
+            return None
 
-@contextmanager
+    if cred:
+        try:
+            project_id = dict(cred.project_id) if hasattr(cred, 'project_id') else getattr(cred, 'project_id', None)
+            if not project_id:
+                if os.path.exists(CREDENTIALS_PATH):
+                    with open(CREDENTIALS_PATH, 'r', encoding='utf-8') as f:
+                        project_id = json.load(f).get('project_id')
+                elif 'env_cred' in locals() and env_cred:
+                    project_id = json.loads(env_cred).get('project_id')
+
+            bucket_name = f"{project_id}.appspot.com" if project_id else None
+            
+            firebase_app = firebase_admin.initialize_app(cred, {
+                'storageBucket': bucket_name
+            })
+            print(f"[database] Firebase initialized (Bucket: {bucket_name})")
+            return firebase_app
+        except Exception as e:
+            print(f"⚠️ [database] Error initializing Firebase: {e}")
+            return None
+    return None
+
 def get_db():
-    conn = get_connection()
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    """Returns Firestore client"""
+    if not firebase_admin._apps:
+        init_firebase()
+    return firestore.client()
 
-# ---------- SQL Helpers ----------
-
-def _q(sql):
-    """แปลง placeholder ? → %s สำหรับ PostgreSQL"""
-    if USE_PG:
-        return sql.replace('?', '%s')
-    return sql
-
-def execute(conn, sql, params=None):
-    """Execute SQL — รองรับทั้ง SQLite และ PostgreSQL"""
-    sql = _q(sql)
-    if USE_PG:
-        cur = conn.cursor()
-        cur.execute(sql, params or ())
-        return cur
-    else:
-        return conn.execute(sql, params or ())
-
-def execute_returning_id(conn, sql, params=None):
-    """INSERT แล้ว return id ของแถวใหม่"""
-    if USE_PG:
-        sql = _q(sql)
-        # เพิ่ม RETURNING id ถ้ายังไม่มี
-        if 'RETURNING' not in sql.upper():
-            sql = sql.rstrip().rstrip(';') + ' RETURNING id'
-        cur = conn.cursor()
-        cur.execute(sql, params or ())
-        row = cur.fetchone()
-        return row['id'] if row else None
-    else:
-        cur = conn.execute(sql, params or ())
-        return cur.lastrowid
-
-def fetchone(conn, sql, params=None):
-    """SELECT หนึ่งแถว — return dict-like object"""
-    sql = _q(sql)
-    if USE_PG:
-        cur = conn.cursor()
-        cur.execute(sql, params or ())
-        return cur.fetchone()
-    else:
-        return conn.execute(sql, params or ()).fetchone()
-
-def fetchall(conn, sql, params=None):
-    """SELECT หลายแถว — return list of dict-like objects"""
-    sql = _q(sql)
-    if USE_PG:
-        cur = conn.cursor()
-        cur.execute(sql, params or ())
-        return cur.fetchall()
-    else:
-        return conn.execute(sql, params or ()).fetchall()
-
-# ---------- Init DB ----------
-
-_PG_SCHEMA = """
-CREATE TABLE IF NOT EXISTS uploads (
-    id SERIAL PRIMARY KEY,
-    image_path TEXT NOT NULL,
-    image_data BYTEA,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS entries (
-    id SERIAL PRIMARY KEY,
-    upload_id INTEGER,
-    date TEXT,
-    deposit_time TEXT,
-    book_no TEXT,
-    iv_no TEXT,
-    cheque_no TEXT,
-    account TEXT,
-    amount DOUBLE PRECISION,
-    total_amount DOUBLE PRECISION,
-    buyer_place TEXT,
-    cheque_source TEXT,
-    status TEXT,
-    payee TEXT,
-    amount_words TEXT,
-    memo TEXT,
-    branch_name TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (upload_id) REFERENCES uploads(id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_entries_upload ON entries(upload_id);
-CREATE INDEX IF NOT EXISTS idx_entries_date ON entries(date);
-"""
-
-_SQLITE_SCHEMA = """
-CREATE TABLE IF NOT EXISTS uploads (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    image_path TEXT NOT NULL,
-    image_data BLOB,
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-);
-CREATE TABLE IF NOT EXISTS entries (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    upload_id INTEGER,
-    date TEXT,
-    deposit_time TEXT,
-    book_no TEXT,
-    iv_no TEXT,
-    cheque_no TEXT,
-    account TEXT,
-    amount REAL,
-    total_amount REAL,
-    buyer_place TEXT,
-    cheque_source TEXT,
-    status TEXT,
-    payee TEXT,
-    amount_words TEXT,
-    memo TEXT,
-    branch_name TEXT,
-    created_at TEXT DEFAULT (datetime('now','localtime')),
-    FOREIGN KEY (upload_id) REFERENCES uploads(id)
-);
-CREATE INDEX IF NOT EXISTS idx_entries_upload ON entries(upload_id);
-CREATE INDEX IF NOT EXISTS idx_entries_date ON entries(date);
-"""
+def get_bucket():
+    """Returns Firebase Storage bucket"""
+    if not firebase_admin._apps:
+        init_firebase()
+    return storage.bucket()
 
 def init_db():
-    with get_db() as conn:
-        if USE_PG:
-            cur = conn.cursor()
-            cur.execute(_PG_SCHEMA)
-            # ตรวจสอบและเพิ่มคอลัมน์ image_data ถ้ายังไม่มี
-            cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name='uploads' AND column_name='image_data'")
-            if not cur.fetchone():
-                print("[database] Adding image_data column to PostgreSQL uploads")
-                cur.execute("ALTER TABLE uploads ADD COLUMN image_data BYTEA")
-            conn.commit()
-            print("[database] PostgreSQL tables ready")
-        else:
-            # สำหรับ SQLite
-            conn.executescript(_SQLITE_SCHEMA)
-            cur = conn.execute("PRAGMA table_info(uploads)")
-            columns = [row[1] for row in cur.fetchall()]
-            if 'image_data' not in columns:
-                print("[database] Adding image_data column to SQLite uploads")
-                conn.execute("ALTER TABLE uploads ADD COLUMN image_data BLOB")
-            print("[database] SQLite tables ready")
+    """Called from app.py at startup"""
+    init_firebase()
+

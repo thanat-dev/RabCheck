@@ -24,3 +24,7 @@ node_modules/
 
 # Claude
 .claude/
+
+# Firebase credentials
+firebase_credentials.json
+firebase_credentials.json.json

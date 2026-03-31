@@ -5,14 +5,14 @@ import uuid
 import json
 import io
 import requests as http_requests
+from datetime import datetime
 
-from flask import Flask, request, jsonify, send_from_directory, send_file
+from flask import Flask, request, jsonify, send_from_directory, send_file, redirect
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
-import sqlite3
 from config import UPLOAD_FOLDER, ALLOWED_EXTENSIONS, BASE_DIR
-from database import get_db, init_db, execute, execute_returning_id, fetchone, fetchall, USE_PG
+from database import get_db, get_bucket, init_db
 
 app = Flask(__name__, static_folder='../frontend', static_url_path='')
 CORS(app)
@@ -20,11 +20,6 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def row_to_dict(row):
-    if row is None:
-        return None
-    return dict(row)
 
 @app.route('/')
 def index():
@@ -42,18 +37,35 @@ def upload():
 
     ext = f.filename.rsplit('.', 1)[1].lower()
     filename = f"{uuid.uuid4().hex}.{ext}"
-    path = os.path.join(UPLOAD_FOLDER, filename)
-    # อ่านข้อมูลรูปเป็น binary
     image_data = f.read()
-    f.seek(0) # reset pointer for f.save if still needed, but we'll save to DB
-    f.save(path) # keep local save as fallback/cache if desired, but DB is primary
+    
+    # Upload to Firebase Storage
+    public_url = ''
+    try:
+        bucket = get_bucket()
+        blob = bucket.blob(f"uploads/{filename}")
+        blob.upload_from_string(image_data, content_type=f.mimetype or 'image/jpeg')
+        blob.make_public()
+        public_url = blob.public_url
+    except Exception as e:
+        print("[Firebase Storage Error]", e)
+        # Fallback if bucket is not properly configured
+        f.seek(0)
+        path = os.path.join(UPLOAD_FOLDER, filename)
+        f.save(path)
 
-    with get_db() as conn:
-        upload_id = execute_returning_id(
-            conn,
-            "INSERT INTO uploads (image_path, image_data) VALUES (?, ?)",
-            (filename, image_data if USE_PG else sqlite3.Binary(image_data))
-        )
+    # Save to Firestore
+    try:
+        db = get_db()
+        _, upload_ref = db.collection('uploads').add({
+            'image_path': filename,
+            'image_url': public_url,
+            'created_at': datetime.utcnow().isoformat()
+        })
+        upload_id = upload_ref.id
+    except Exception as e:
+        print("[Firestore Error]", e)
+        return jsonify({"error": "ไม่สามารถบันทึกข้อมูลโควต้า Firestore อาจเต็มหรือยังไม่ได้เปิดใช้งาน"}), 500
 
     return jsonify({
         "upload_id": upload_id,
@@ -62,52 +74,73 @@ def upload():
         "message": "อัพโหลดสำเร็จ ไปที่รายการใบเสร็จเพื่อเพิ่มรายการ"
     })
 
-@app.route('/api/upload/<int:upload_id>/ocr', methods=['GET'])
+@app.route('/api/upload/<upload_id>/ocr', methods=['GET'])
 def get_upload_ocr(upload_id):
     """Return empty fields (OCR removed)"""
     return jsonify({"fields": {}})
 
 @app.route('/api/uploads/<filename>')
 def serve_upload(filename):
-    # ลองหาใน DB ก่อน (สำหรับ Render ที่ไฟล์บน disk หายไป)
-    with get_db() as conn:
-        row = fetchone(conn, "SELECT image_data FROM uploads WHERE image_path = ?", (filename,))
-        if row and row['image_data']:
-            content = row['image_data']
-            # ถ้าเป็น memoryview (จาก pg) หรือ bytes ให้ส่งออกไปเลย
-            import mimetypes
-            mime, _ = mimetypes.guess_type(filename)
-            return send_file(
-                io.BytesIO(content),
-                mimetype=mime or 'image/jpeg'
-            )
+    # Try Firestore first to get the public URL and redirect
+    try:
+        db = get_db()
+        docs = db.collection('uploads').where('image_path', '==', filename).limit(1).stream()
+        for doc in docs:
+            data = doc.to_dict()
+            if data.get('image_url'):
+                return redirect(data['image_url'])
+    except Exception as e:
+        pass
 
-    # ถ้าไม่เจอใน DB (หรือ DB ไม่มี data) ให้ลองหาใน disk (fallback)
+    # Fallback to local disk if running offline or Firestore failed
     return send_from_directory(UPLOAD_FOLDER, filename)
 
-@app.route('/api/upload/<int:upload_id>', methods=['DELETE'])
+@app.route('/api/upload/<upload_id>', methods=['DELETE'])
 def delete_upload(upload_id):
     """ยกเลิกอัพโหลด — ลบรูปและรายการที่ผูกกับชุดนี้"""
-    with get_db() as conn:
-        row = fetchone(conn, "SELECT image_path FROM uploads WHERE id = ?", (upload_id,))
-        if not row:
-            return jsonify({"error": "ไม่พบรายการอัพโหลด"}), 404
-        filename = row['image_path']
-        execute(conn, "DELETE FROM entries WHERE upload_id = ?", (upload_id,))
-        execute(conn, "DELETE FROM uploads WHERE id = ?", (upload_id,))
-    path = os.path.join(UPLOAD_FOLDER, filename)
-    if os.path.isfile(path):
+    db = get_db()
+    
+    # ลบ entries ที่ผูกกับ upload_id นี้
+    entries = db.collection('entries').where('upload_id', '==', upload_id).stream()
+    for ent in entries:
+        ent.reference.delete()
+        
+    doc_ref = db.collection('uploads').document(upload_id)
+    doc = doc_ref.get()
+    if not doc.exists:
+        return jsonify({"error": "ไม่พบรายการอัพโหลด"}), 404
+        
+    data = doc.to_dict()
+    filename = data.get('image_path')
+    
+    # ลบเอกสารจาก Firestore
+    doc_ref.delete()
+    
+    # ลบไฟล์จาก Firebase Storage
+    if filename:
         try:
-            os.remove(path)
-        except OSError:
+            bucket = get_bucket()
+            blob = bucket.blob(f"uploads/{filename}")
+            if blob.exists():
+                blob.delete()
+        except:
             pass
+            
+    # ลบไฟล์ในเครื่อง (fallback)
+    if filename:
+        path = os.path.join(UPLOAD_FOLDER, filename)
+        if os.path.isfile(path):
+            try:
+                os.remove(path)
+            except:
+                pass
+
     return jsonify({"ok": True})
 
 THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
 
-
 def _ymd_to_thai(ymd):
-    """แปลง YYYY-MM-DD เป็นรูปแบบไทย เช่น 11 ก.พ. 2569 (ตามที่เก็บใน DB)"""
+    """แปลง YYYY-MM-DD เป็นรูปแบบไทย"""
     if not ymd or len(ymd) < 10:
         return None
     parts = ymd[:10].split('-')
@@ -118,9 +151,8 @@ def _ymd_to_thai(ymd):
         if y >= 2500:
             y -= 543
         return '{} {} {}'.format(d, THAI_MONTHS[m - 1] if 1 <= m <= 12 else '', y + 543)
-    except (ValueError, IndexError):
+    except:
         return None
-
 
 def _parse_thai_date(s):
     """แปลง 11 ก.พ. 2569 เป็น YYYY-MM-DD"""
@@ -136,14 +168,11 @@ def _parse_thai_date(s):
                     return '{}-{:02d}-{:02d}'.format(y, i, d)
     return None
 
-
 def _normalize_date_filter(date_filter):
-    """รับค่าวันที่ YYYY-MM-DD หรือ พ.ศ. (2569-02-17) หรือไทย (11 ก.พ. 2569)
-    คืนรายการวันที่ที่จะใช้ใน WHERE (รองรับทั้งรูปแบบที่เก็บใน DB)"""
+    """รับค่าวันที่ คืนรายการวันที่ที่จะใช้กรอง"""
     if not date_filter:
         return []
     s = str(date_filter).strip()
-    # ลองแปลงรูปแบบไทย (11 ก.พ. 2569) เป็น Y-m-d ก่อน
     ymd = _parse_thai_date(s)
     if ymd:
         s = ymd
@@ -158,34 +187,30 @@ def _normalize_date_filter(date_filter):
     try:
         y = int(parts[0])
         m, d = parts[1], parts[2]
-    except ValueError:
+    except:
         return []
     out = [s]
     if y >= 2500:
         out.append(str(y - 543) + '-' + m + '-' + d)
     elif y <= 2100:
         out.append(str(y + 543) + '-' + m + '-' + d)
-    # เพิ่มรูปแบบไทยที่ DB อาจเก็บไว้ (เช่น 11 ก.พ. 2569)
     thai_fmt = _ymd_to_thai(s)
     if thai_fmt:
         out.append(thai_fmt)
-    # ถ้า s เป็นค.ศ. ให้เพิ่มรูปแบบไทยของ s ด้วย
     if y < 2500:
         thai_s = _ymd_to_thai(str(y + 543) + '-' + m + '-' + d)
         if thai_s and thai_s not in out:
             out.append(thai_s)
     return out
 
-
 def _row_date_matches(row_date, target_ymd_list):
-    """เช็คว่า row_date (ค่าจาก DB) ตรงกับรายการ target หรือไม่ (รองรับ Y-m-d และรูปแบบไทย)"""
+    """เช็คว่า row_date ตรงกับรายการ target หรือไม่"""
     if not row_date or not target_ymd_list:
         return False
     s = str(row_date).strip()
     for t in target_ymd_list:
         if s == t or s.startswith(t) or t.startswith(s):
             return True
-    # รองรับ YYYY-MM-DD ใน DB
     s10 = s[:10]
     if len(s10) >= 10 and s10.replace('-', '').isdigit():
         parts = s10.split('-')
@@ -196,94 +221,83 @@ def _row_date_matches(row_date, target_ymd_list):
                     greg = str(y - 543) + '-' + parts[1] + '-' + parts[2]
                     if greg in target_ymd_list:
                         return True
-            except ValueError:
+            except:
                 pass
-    # รองรับรูปแบบไทยใน DB (11 ก.พ. 2569)
     row_ymd = _parse_thai_date(s)
     if row_ymd and row_ymd in target_ymd_list:
         return True
     return False
 
+def get_entries_from_firestore(upload_id=None, date_filter=None):
+    db = get_db()
+    date_values = _normalize_date_filter(date_filter) if date_filter else []
+    
+    # 1. โหลด uploads ทั้งหมดเพื่อมาแนบ image_path (จอยข้อมูลแบบ NoSQL)
+    uploads_map = {}
+    try:
+        for upd in db.collection('uploads').stream():
+            ud = upd.to_dict()
+            # ใช้ image_path เพื่อให้ API คืนค่ากลับไปเหมือนเดิม
+            uploads_map[upd.id] = ud.get('image_path')
+    except Exception as e:
+        print("[Firestore get uploads error]", e)
+
+    # 2. คิวรี entries
+    rows = []
+    try:
+        # ถ้ามี upload_id ให้ใช้ where เพื่อความเร็ว
+        if upload_id:
+            docs = db.collection('entries').where('upload_id', '==', upload_id).stream()
+        else:
+            docs = db.collection('entries').stream()
+            
+        for doc in docs:
+            data = doc.to_dict()
+            data['id'] = doc.id
+            
+            # กรอง date ในระดับแอพ (เพราะรูปแบบวันที่มีหลากหลาย)
+            if date_values and not _row_date_matches(data.get('date'), date_values):
+                continue
+                
+            # แนบรูป
+            uid = data.get('upload_id')
+            if uid and uid in uploads_map:
+                data['image_path'] = uploads_map[uid]
+                
+            rows.append(data)
+    except Exception as e:
+        print("[Firestore get entries error]", e)
+        
+    # เรียงลำดับตาม created_at
+    rows.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+    return rows
 
 @app.route('/api/entries', methods=['GET'])
 def list_entries():
-    upload_id = request.args.get('upload_id', type=int)
-    date_filter = request.args.get('date', type=str)
-    date_values = _normalize_date_filter(date_filter) if date_filter else []
-    with get_db() as conn:
-        if upload_id:
-            if date_values:
-                conditions = []
-                for d in date_values:
-                    conditions.append("(trim(coalesce(e.date,'')) = ? OR trim(coalesce(e.date,'')) LIKE ?)")
-                params = (upload_id,) + tuple(p for d in date_values for p in [d, d + '%'])
-                rows = fetchall(conn,
-                    """SELECT e.*, u.image_path
-                       FROM entries e
-                       LEFT JOIN uploads u ON e.upload_id = u.id
-                       WHERE e.upload_id = ? AND (""" + ' OR '.join(conditions) + """)
-                       ORDER BY e.created_at DESC""",
-                    params
-                )
-            else:
-                rows = fetchall(conn,
-                    """SELECT e.*, u.image_path
-                       FROM entries e
-                       LEFT JOIN uploads u ON e.upload_id = u.id
-                       WHERE e.upload_id = ?
-                       ORDER BY e.created_at DESC""",
-                    (upload_id,)
-                )
-        else:
-            if date_values:
-                # รองรับทั้ง date เท่ากับค่าที่ส่งมา และ date ขึ้นต้นด้วยค่าที่ส่งมา (เช่น มีเวลาต่อท้าย)
-                conditions = []
-                params = []
-                for d in date_values:
-                    conditions.append("(trim(coalesce(e.date,'')) = ? OR trim(coalesce(e.date,'')) LIKE ?)")
-                    params.extend([d, d + '%'])
-                where_sql = ' OR '.join(conditions)
-                rows = fetchall(conn,
-                    """SELECT e.*, u.image_path
-                       FROM entries e
-                       LEFT JOIN uploads u ON e.upload_id = u.id
-                       WHERE (""" + where_sql + """)
-                       ORDER BY e.created_at DESC""",
-                    tuple(params)
-                )
-                # ถ้าไม่เจอจาก SQL ลองดึงทั้งหมดแล้วกรองใน Python (รองรับรูปแบบวันที่ใน DB ที่หลากหลาย)
-                if not rows:
-                    all_rows = fetchall(conn,
-                        """SELECT e.*, u.image_path
-                           FROM entries e
-                           LEFT JOIN uploads u ON e.upload_id = u.id
-                           ORDER BY e.created_at DESC"""
-                    )
-                    rows = [r for r in all_rows if _row_date_matches(r['date'], date_values)]
-            else:
-                rows = fetchall(conn,
-                    """SELECT e.*, u.image_path
-                       FROM entries e
-                       LEFT JOIN uploads u ON e.upload_id = u.id
-                       ORDER BY e.created_at DESC"""
-                )
-    return jsonify([row_to_dict(r) for r in rows])
+    upload_id = request.args.get('upload_id')
+    date_filter = request.args.get('date')
+    rows = get_entries_from_firestore(upload_id, date_filter)
+    return jsonify(rows)
 
-@app.route('/api/entries/<int:eid>', methods=['GET'])
+@app.route('/api/entries/<eid>', methods=['GET'])
 def get_entry(eid):
-    with get_db() as conn:
-        row = fetchone(conn,
-            """SELECT e.*, u.image_path
-               FROM entries e
-               LEFT JOIN uploads u ON e.upload_id = u.id
-               WHERE e.id = ?""",
-            (eid,)
-        )
-    if not row:
+    db = get_db()
+    doc = db.collection('entries').document(eid).get()
+    if not doc.exists:
         return jsonify({"error": "ไม่พบรายการ"}), 404
-    return jsonify(row_to_dict(row))
+        
+    data = doc.to_dict()
+    data['id'] = doc.id
+    
+    uid = data.get('upload_id')
+    if uid:
+        udoc = db.collection('uploads').document(uid).get()
+        if udoc.exists:
+            data['image_path'] = udoc.to_dict().get('image_path')
+            
+    return jsonify(data)
 
-@app.route('/api/entries/<int:eid>', methods=['PUT'])
+@app.route('/api/entries/<eid>', methods=['PUT'])
 def update_entry(eid):
     data = request.get_json() or {}
     cols = [
@@ -291,72 +305,69 @@ def update_entry(eid):
         'amount', 'total_amount', 'buyer_place', 'cheque_source', 'status',
         'payee', 'amount_words', 'memo', 'branch_name'
     ]
-    updates = []
-    values = []
+    updates = {}
     for c in cols:
         if c in data:
-            updates.append(f"{c} = ?")
             v = data[c]
             if c in ('amount', 'total_amount') and v is not None:
                 try:
                     v = float(v)
-                except (TypeError, ValueError):
+                except:
                     v = None
-            values.append(v)
+            updates[c] = v
+            
     if not updates:
         return jsonify({"error": "ไม่มีข้อมูลที่จะอัปเดต"}), 400
-    values.append(eid)
-    sql = "UPDATE entries SET " + ", ".join(updates) + " WHERE id = ?"
-    with get_db() as conn:
-        execute(conn, sql, values)
-    return jsonify({"ok": True})
+        
+    db = get_db()
+    doc_ref = db.collection('entries').document(eid)
+    if doc_ref.get().exists:
+        doc_ref.update(updates)
+        return jsonify({"ok": True})
+    return jsonify({"error": "ไม่พบรายการ"}), 404
 
-@app.route('/api/entries/<int:eid>', methods=['DELETE'])
+@app.route('/api/entries/<eid>', methods=['DELETE'])
 def delete_entry(eid):
-    with get_db() as conn:
-        execute(conn, "DELETE FROM entries WHERE id = ?", (eid,))
+    db = get_db()
+    db.collection('entries').document(eid).delete()
     return jsonify({"ok": True})
-
-@app.route('/api/entries', methods=['POST'])
-def create_entry():
-    """สร้างรายการใหม่ (กรอกเองโดยไม่ต้องอัพโหลดรูป)"""
-    data = request.get_json() or {}
-    upload_id = data.get('upload_id')
-    with get_db() as conn:
-        eid = execute_returning_id(conn,
-            """INSERT INTO entries (
-                upload_id, date, deposit_time, book_no, iv_no, cheque_no, account,
-                amount, total_amount, buyer_place, cheque_source, status,
-                payee, amount_words, memo, branch_name
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                upload_id if upload_id else None,
-                data.get('date'),
-                data.get('deposit_time'),
-                data.get('book_no'),
-                data.get('iv_no'),
-                data.get('cheque_no'),
-                data.get('account'),
-                _float(data.get('amount')),
-                _float(data.get('total_amount')),
-                data.get('buyer_place'),
-                data.get('cheque_source'),
-                data.get('status'),
-                data.get('payee'),
-                data.get('amount_words'),
-                data.get('memo'),
-                data.get('branch_name'),
-            )
-        )
-    return jsonify({"id": eid, "ok": True})
 
 def _float(v):
     if v is None or v == '':
         return None
     try:
         return float(v)
-    except (TypeError, ValueError):
+    except:
         return None
+
+@app.route('/api/entries', methods=['POST'])
+def create_entry():
+    data = request.get_json() or {}
+    upload_id = data.get('upload_id')
+    
+    doc_data = {
+        'upload_id': upload_id if upload_id else None,
+        'date': data.get('date'),
+        'deposit_time': data.get('deposit_time'),
+        'book_no': data.get('book_no'),
+        'iv_no': data.get('iv_no'),
+        'cheque_no': data.get('cheque_no'),
+        'account': data.get('account'),
+        'amount': _float(data.get('amount')),
+        'total_amount': _float(data.get('total_amount')),
+        'buyer_place': data.get('buyer_place'),
+        'cheque_source': data.get('cheque_source'),
+        'status': data.get('status'),
+        'payee': data.get('payee'),
+        'amount_words': data.get('amount_words'),
+        'memo': data.get('memo'),
+        'branch_name': data.get('branch_name'),
+        'created_at': datetime.utcnow().isoformat()
+    }
+    
+    db = get_db()
+    _, doc_ref = db.collection('entries').add(doc_data)
+    return jsonify({"id": doc_ref.id, "ok": True})
 
 @app.route('/api/send-to-sheet', methods=['POST'])
 def send_to_sheet():
@@ -372,43 +383,21 @@ def send_to_sheet():
         return jsonify({"error": "ไม่มีข้อมูลที่จะส่ง"}), 400
     try:
         payload = json.dumps({'rows': rows})
-
-        # Debug: แสดงข้อมูล buyer_place/cheque_source/status ที่กำลังส่ง
-        for i, r in enumerate(rows[:3]):
-            print(f"[send-to-sheet] row {i}: buyer_place={r.get('buyer_place')!r}, "
-                  f"cheque_source={r.get('cheque_source')!r}, status={r.get('status')!r}")
-
-        # Google Apps Script ประมวลผล POST แล้วตอบ 302 redirect ไปยัง URL สำหรับอ่าน response
-        # requests จะ follow redirect อัตโนมัติ (302 → GET) ซึ่งถูกต้อง
-        resp = http_requests.post(
-            url,
-            data=payload,
-            headers={'Content-Type': 'application/json'},
-            timeout=30
-        )
-
+        resp = http_requests.post(url, data=payload, headers={'Content-Type': 'application/json'}, timeout=30)
         if resp.status_code != 200:
             return jsonify({"error": f"Google Apps Script ตอบกลับ HTTP {resp.status_code}"}), 502
 
-        # ตรวจสอบ response เป็น JSON หรือไม่
         result_text = resp.text
         try:
             parsed = json.loads(result_text)
-        except (ValueError, TypeError):
-            return jsonify({
-                "error": "Google Apps Script ไม่ได้ตอบกลับ JSON — ตรวจสอบว่า Deploy เป็น Web App และ URL ถูกต้อง"
-            }), 502
+        except:
+            return jsonify({"error": "Google Apps Script ไม่ได้ตอบกลับ JSON"}), 502
 
         if parsed.get('ok') is False:
-            error_msg = parsed.get('error', 'เกิดข้อผิดพลาดที่ Google Apps Script')
-            return jsonify({"error": error_msg}), 400
+            return jsonify({"error": parsed.get('error', 'เกิดข้อผิดพลาดที่ Google Apps Script')}), 400
 
         return jsonify({"ok": True, "message": "ส่งข้อมูลเรียบร้อย", "count": parsed.get('count')})
 
-    except http_requests.exceptions.Timeout:
-        return jsonify({"error": "หมดเวลาเชื่อมต่อ Google Apps Script (30 วินาที)"}), 504
-    except http_requests.exceptions.ConnectionError as e:
-        return jsonify({"error": f"เชื่อมต่อ Google Apps Script ไม่สำเร็จ: {str(e)}"}), 502
     except Exception as e:
         return jsonify({"error": f"เกิดข้อผิดพลาด: {str(e)}"}), 500
 
