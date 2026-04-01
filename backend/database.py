@@ -26,8 +26,13 @@ def init_firebase():
     else:
         env_cred = os.environ.get('FIREBASE_CREDENTIALS')
         if env_cred:
+            import base64
             try:
-                cred_dict = json.loads(env_cred)
+                if env_cred.strip().startswith('{'):
+                    cred_dict = json.loads(env_cred)
+                else:
+                    decoded = base64.b64decode(env_cred).decode('utf-8')
+                    cred_dict = json.loads(decoded)
                 cred = credentials.Certificate(cred_dict)
             except Exception as e:
                 print(f"[database] Error reading FIREBASE_CREDENTIALS env var: {e}")
