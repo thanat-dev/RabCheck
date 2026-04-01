@@ -54,9 +54,9 @@ def migrate_data():
             pg_cursor.execute("SELECT id FROM uploads WHERE id = %s", (row['id'],))
             if not pg_cursor.fetchone():
                 pg_cursor.execute("""
-                    INSERT INTO uploads (id, image_path, created_at)
-                    VALUES (%s, %s, %s)
-                """, (row['id'], row['image_path'], row['created_at']))
+                    INSERT INTO uploads (id, image_path, image_data, created_at)
+                    VALUES (%s, %s, %s, %s)
+                """, (row['id'], row['image_path'], row['image_data'], row['created_at']))
                 upload_inserted += 1
         
         # Reset sequence for uploads

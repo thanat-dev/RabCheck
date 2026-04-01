@@ -22,7 +22,7 @@ def init_firebase():
         try:
             cred = credentials.Certificate(CREDENTIALS_PATH)
         except Exception as e:
-            print(f"⚠️ [database] Error reading file: {e}")
+            print(f"[database] Error reading file: {e}")
     else:
         env_cred = os.environ.get('FIREBASE_CREDENTIALS')
         if env_cred:
@@ -30,14 +30,14 @@ def init_firebase():
                 cred_dict = json.loads(env_cred)
                 cred = credentials.Certificate(cred_dict)
             except Exception as e:
-                print(f"⚠️ [database] Error reading FIREBASE_CREDENTIALS env var: {e}")
+                print(f"[database] Error reading FIREBASE_CREDENTIALS env var: {e}")
         else:
-            print(f"⚠️ [database] ไม่พบไฟล์ {CREDENTIALS_PATH} และไม่มี Environment Variable FIREBASE_CREDENTIALS")
+            print(f"[database] ไม่พบไฟล์ {CREDENTIALS_PATH} และไม่มี Environment Variable FIREBASE_CREDENTIALS")
             return None
 
     if cred:
         try:
-            project_id = dict(cred.project_id) if hasattr(cred, 'project_id') else getattr(cred, 'project_id', None)
+            project_id = cred.project_id if hasattr(cred, 'project_id') else getattr(cred, 'project_id', None)
             if not project_id:
                 if os.path.exists(CREDENTIALS_PATH):
                     with open(CREDENTIALS_PATH, 'r', encoding='utf-8') as f:
@@ -45,7 +45,7 @@ def init_firebase():
                 elif 'env_cred' in locals() and env_cred:
                     project_id = json.loads(env_cred).get('project_id')
 
-            bucket_name = f"{project_id}.appspot.com" if project_id else None
+            bucket_name = f"{project_id}.firebasestorage.app" if project_id else None
             
             firebase_app = firebase_admin.initialize_app(cred, {
                 'storageBucket': bucket_name
@@ -53,7 +53,7 @@ def init_firebase():
             print(f"[database] Firebase initialized (Bucket: {bucket_name})")
             return firebase_app
         except Exception as e:
-            print(f"⚠️ [database] Error initializing Firebase: {e}")
+            print(f"[database] Error initializing Firebase: {e}")
             return None
     return None
 
