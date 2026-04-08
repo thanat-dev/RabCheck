@@ -670,6 +670,7 @@
           fAccOther.classList.add('hidden');
         }
         document.getElementById('fAmount').value = row.amount != null ? formatAmountDisplay(row.amount) : '';
+        document.getElementById('fAmountWords').value = row.amount_words || '';
         syncFromAmount();
         document.getElementById('fBuyerPlace').value = row.buyer_place || '';
         document.getElementById('fChequeSource').value = row.cheque_source || '';
@@ -1105,7 +1106,10 @@
     var n = parseFloat(v);
     if (!isNaN(n) && n >= 0) {
       document.getElementById('fTotalAmount').value = formatAmountDisplay(n);
-      document.getElementById('fAmountWords').value = numberToThaiWords(n);
+      var amountWordsEl = document.getElementById('fAmountWords');
+      if (!amountWordsEl.value) {
+        amountWordsEl.value = numberToThaiWords(n);
+      }
     } else {
       document.getElementById('fTotalAmount').value = '';
       document.getElementById('fAmountWords').value = '';
