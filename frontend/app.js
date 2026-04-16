@@ -1099,20 +1099,20 @@
     }
   });
   document.getElementById('fAmount').addEventListener('input', function () {
-    syncFromAmount();
+    syncFromAmount(true);
   });
-  function syncFromAmount() {
+  function syncFromAmount(force) {
     var v = (document.getElementById('fAmount').value || '').replace(/,/g, '').trim();
     var n = parseFloat(v);
     if (!isNaN(n) && n >= 0) {
       document.getElementById('fTotalAmount').value = formatAmountDisplay(n);
       var amountWordsEl = document.getElementById('fAmountWords');
-      if (!amountWordsEl.value) {
+      if (force || !amountWordsEl.value) {
         amountWordsEl.value = numberToThaiWords(n);
       }
     } else {
       document.getElementById('fTotalAmount').value = '';
-      document.getElementById('fAmountWords').value = '';
+      if (force) document.getElementById('fAmountWords').value = '';
     }
   }
 
@@ -1609,7 +1609,7 @@
     }).join('');
     collectTableBody.querySelectorAll('button.edit').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        openEdit(parseInt(this.getAttribute('data-id'), 10));
+        openEdit(this.getAttribute('data-id'));
       });
     });
   }
