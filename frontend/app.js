@@ -1,7 +1,9 @@
 (function () {
   'use strict';
 
-  const API = window.location.origin;
+  var RENDER_API_BASE = 'https://rabcheck.onrender.com';
+  var configuredApiBase = window.RABCHECK_API_BASE || '';
+  const API = (configuredApiBase || (window.location.hostname.endsWith('.github.io') ? RENDER_API_BASE : window.location.origin)).replace(/\/$/, '');
 
   var BUYER_PLACE_LIST = [
     'โรงพยาบาลพระมงกุฎเกล้า',
@@ -154,10 +156,49 @@
     } catch (e) { return []; }
   }
 
+  function uniqueTrimmedList(list) {
+    var seen = {};
+    return (list || []).map(function (v) {
+      return (v == null) ? '' : String(v).trim();
+    }).filter(function (v) {
+      if (!v || seen[v]) return false;
+      seen[v] = true;
+      return true;
+    });
+  }
+
+  function getVisibleAccountList() {
+    var removed = getAccountRemovedList();
+    return uniqueTrimmedList(
+      ACCOUNT_PREDEFINED.filter(function (v) { return removed.indexOf(v) === -1; })
+        .concat(getAccountExtraList())
+    );
+  }
+
+  function cleanupDuplicateAccountExtras() {
+    var base = {};
+    ACCOUNT_PREDEFINED.forEach(function (v) { base[v] = true; });
+    var cleaned = uniqueTrimmedList(getAccountExtraList()).filter(function (v) {
+      return !base[v];
+    });
+    var current = getAccountExtraList();
+    if (JSON.stringify(current) !== JSON.stringify(cleaned)) {
+      localStorage.setItem('rabcheck_account_list', JSON.stringify(cleaned));
+    }
+  }
+
   function saveAccountExtra(val) {
     if (!val || !val.trim()) return;
-    var list = getAccountExtraList();
     var v = val.trim();
+    var existing = {};
+    ACCOUNT_PREDEFINED.concat(getAccountExtraList()).forEach(function (item) {
+      existing[item] = true;
+    });
+    if (existing[v]) {
+      cleanupDuplicateAccountExtras();
+      return;
+    }
+    var list = uniqueTrimmedList(getAccountExtraList());
     if (list.indexOf(v) === -1) {
       list.push(v);
       localStorage.setItem('rabcheck_account_list', JSON.stringify(list));
@@ -175,9 +216,9 @@
 
   function loadAccountOptions() {
     var removed = getAccountRemovedList();
+    cleanupDuplicateAccountExtras();
     var html = '<option value="">-- เลือก --</option>';
-    ACCOUNT_PREDEFINED.filter(function (v) { return removed.indexOf(v) === -1; }).forEach(function (v) { html += '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; });
-    getAccountExtraList().forEach(function (v) { html += '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; });
+    getVisibleAccountList().forEach(function (v) { html += '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + '</option>'; });
     if (removed.indexOf('__other__') === -1) {
       html += '<option value="__other__">' + escapeHtml(getAccountOtherLabel()) + '</option>';
     }
@@ -219,6 +260,38 @@
     'fAccount', 'fAmount', 'fTotalAmount', 'fBuyerPlace', 'fChequeSource',
     'fStatus', 'fAmountWords', 'fMemo'
   ];
+
+  function normalizeIvNo(value) {
+    return (value || '').toString().trim().toUpperCase();
+  }
+
+  function setupEnglishIvNoInput(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.setAttribute('lang', 'en');
+    el.setAttribute('inputmode', 'text');
+    el.setAttribute('autocomplete', 'off');
+    el.setAttribute('autocapitalize', 'characters');
+    el.setAttribute('spellcheck', 'false');
+    el.style.imeMode = 'disabled';
+    el.addEventListener('input', function () {
+      var start = el.selectionStart;
+      var end = el.selectionEnd;
+      var normalized = el.value.toUpperCase();
+      if (el.value !== normalized) {
+        el.value = normalized;
+        if (typeof start === 'number' && typeof end === 'number') {
+          el.setSelectionRange(start, end);
+        }
+      }
+    });
+    el.addEventListener('blur', function () {
+      el.value = normalizeIvNo(el.value);
+    });
+  }
+
+  setupEnglishIvNoInput('fIvNo');
+  setupEnglishIvNoInput('rfIvNo');
 
   // Navigation
   document.querySelectorAll('.nav-btn').forEach(function (btn) {
@@ -614,7 +687,7 @@
       }
     }
     // จำนวนเงิน (ยอดในใบเสร็จ) และรวมจำนวนเงิน: ไม่ดึงจากภาพ ปล่อยว่างให้กรอกเอง
-    if (fields.iv_no) document.getElementById('fIvNo').value = String(fields.iv_no).trim();
+    if (fields.iv_no) document.getElementById('fIvNo').value = normalizeIvNo(fields.iv_no);
     if (fields.book_no) document.getElementById('fBookNo').value = String(fields.book_no).trim();
   }
 
@@ -653,13 +726,12 @@
         if (datePickerInstance) { datePickerInstance.setDate(dateVal, false); } else { document.getElementById('fDate').value = dateVal; }
         document.getElementById('fDepositTime').value = row.deposit_time || '';
         document.getElementById('fBookNo').value = row.book_no || '';
-        document.getElementById('fIvNo').value = row.iv_no || '';
+        document.getElementById('fIvNo').value = normalizeIvNo(row.iv_no || '');
         document.getElementById('fChequeNo').value = row.cheque_no || '';
         var acc = row.account || '';
         var fAcc = document.getElementById('fAccount');
         var fAccOther = document.getElementById('fAccountOther');
-        var accRemoved = getAccountRemovedList();
-        var predefined = ACCOUNT_PREDEFINED.filter(function (v) { return accRemoved.indexOf(v) === -1; }).concat(getAccountExtraList());
+        var predefined = getVisibleAccountList();
         if (acc && predefined.indexOf(acc) === -1) {
           fAcc.value = '__other__';
           fAccOther.value = acc;
@@ -715,7 +787,7 @@
       date: document.getElementById('fDate').value || null,
       deposit_time: document.getElementById('fDepositTime').value || null,
       book_no: document.getElementById('fBookNo').value || null,
-      iv_no: document.getElementById('fIvNo').value || null,
+      iv_no: normalizeIvNo(document.getElementById('fIvNo').value) || null,
       cheque_no: document.getElementById('fChequeNo').value || null,
       account: (function () {
         var v = document.getElementById('fAccount').value;
@@ -790,7 +862,7 @@
                 var d = dateToIso(f.date);
                 if (d && receiptFormDatePicker) receiptFormDatePicker.setDate(d, false);
               }
-              if (f.iv_no) document.getElementById('rfIvNo').value = String(f.iv_no).trim();
+              if (f.iv_no) document.getElementById('rfIvNo').value = normalizeIvNo(f.iv_no);
               if (f.book_no) document.getElementById('rfBookNo').value = String(f.book_no).trim();
             })
             .catch(function () { });
@@ -804,13 +876,12 @@
             if (receiptFormDatePicker) receiptFormDatePicker.setDate(dateVal, false);
             document.getElementById('rfDepositTime').value = row.deposit_time || '';
             document.getElementById('rfBookNo').value = row.book_no || '';
-            document.getElementById('rfIvNo').value = row.iv_no || '';
+            document.getElementById('rfIvNo').value = normalizeIvNo(row.iv_no || '');
             document.getElementById('rfChequeNo').value = row.cheque_no || '';
             var acc = row.account || '';
             var fAcc = document.getElementById('rfAccount');
             var fAccOther = document.getElementById('rfAccountOther');
-            var accRemoved = getAccountRemovedList();
-            var predefined = ACCOUNT_PREDEFINED.filter(function (v) { return accRemoved.indexOf(v) === -1; }).concat(getAccountExtraList());
+            var predefined = getVisibleAccountList();
             if (acc && predefined.indexOf(acc) === -1) {
               fAcc.value = '__other__';
               fAccOther.value = acc;
@@ -928,7 +999,7 @@
         })(),
         deposit_time: document.getElementById('rfDepositTime').value || null,
         book_no: document.getElementById('rfBookNo').value || null,
-        iv_no: document.getElementById('rfIvNo').value || null,
+        iv_no: normalizeIvNo(document.getElementById('rfIvNo').value) || null,
         cheque_no: document.getElementById('rfChequeNo').value || null,
         account: (function () {
           var v = document.getElementById('rfAccount').value;
@@ -1408,7 +1479,7 @@
     var accRemoved = getAccountRemovedList();
     var bpAll = BUYER_PLACE_LIST.filter(function (v) { return bpRemoved.indexOf(v) === -1; }).concat(bpExtra);
     var otherLabel = getAccountOtherLabel();
-    var accAll = ACCOUNT_PREDEFINED.filter(function (v) { return accRemoved.indexOf(v) === -1; }).concat(accExtra).concat(accRemoved.indexOf('__other__') === -1 ? ['__other__'] : []);
+    var accAll = getVisibleAccountList().concat(accRemoved.indexOf('__other__') === -1 ? ['__other__'] : []);
 
     function buildBuyerPlaceLi(v) {
       var actions = '<button type="button" class="btn-edit-item" data-buyer="' + escapeHtml(v) + '" title="แก้ไข">แก้ไข</button> <button type="button" class="btn-remove-item" data-buyer="' + escapeHtml(v) + '" title="ลบ" aria-label="ลบ">&times;</button>';
